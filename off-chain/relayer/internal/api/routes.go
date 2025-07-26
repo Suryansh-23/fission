@@ -60,51 +60,58 @@ func buildQuoteRequestParams(base string, params common.QuoteRequestParams) (str
 }
 
 func (s *APIServer) GetQuoteHandler(c *gin.Context) {
-	queryParams := common.QuoteRequestParams{
-		SrcChain:        c.Query("srcChain"),
-		DstChain:        c.Query("dstChain"),
-		SrcTokenAddress: c.Query("srcTokenAddress"),
-		DstTokenAddress: c.Query("dstTokenAddress"),
-		Amount:          c.Query("amount"),
-		WalletAddress:   c.Query("walletAddress"),
+	if s.devMode {
+		c.JSON(http.StatusOK, s.quote)
+	} else {
+		queryParams := common.QuoteRequestParams{
+			SrcChain:        c.Query("srcChain"),
+			DstChain:        c.Query("dstChain"),
+			SrcTokenAddress: c.Query("srcTokenAddress"),
+			DstTokenAddress: c.Query("dstTokenAddress"),
+			Amount:          c.Query("amount"),
+			WalletAddress:   c.Query("walletAddress"),
+		}
+
+		// build the url string to fetch
+		urlString, err := buildQuoteRequestParams(s.baseURL, queryParams)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid query parameters"})
+			return
+		}
+
+		req, err := http.NewRequest(http.MethodGet, urlString, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create HTTP request"})
+			return
+		}
+
+		req.Header.Set("Authorization", "Bearer "+s.authKey)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch quote"})
+			return
+		}
+		defer resp.Body.Close()
+
+		var quoteResponse common.QuoteResponse
+		if err := json.NewDecoder(resp.Body).Decode(&quoteResponse); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode quote response from 1inch Fusion+ API"})
+			return
+		}
+
+		if quoteResponse.QuoteID == "" {
+			// If no quote ID is returned, generate a dummy one for testing
+			quoteResponse.QuoteID = "ddcae159-e73d-4f22-9234-4085e1b7f7dc"
+		}
+
+		tmp, _ := json.Marshal(quoteResponse)
+
+		s.logger.Printf("%s", tmp)
+		c.JSON(http.StatusOK, quoteResponse)
 	}
-
-	// build the url string to fetch
-	urlString, err := buildQuoteRequestParams(s.baseURL, queryParams)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid query parameters"})
-		return
-	}
-
-	req, err := http.NewRequest(http.MethodGet, urlString, nil)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create HTTP request"})
-		return
-	}
-
-	req.Header.Set("Authorization", "Bearer "+s.authKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch quote"})
-		return
-	}
-	defer resp.Body.Close()
-
-	var quoteResponse common.QuoteResponse
-	if err := json.NewDecoder(resp.Body).Decode(&quoteResponse); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode quote response from 1inch Fusion+ API"})
-		return
-	}
-
-	if quoteResponse.QuoteID == "" {
-		// If no quote ID is returned, generate a dummy one for testing
-		quoteResponse.QuoteID = "ddcae159-e73d-4f22-9234-4085e1b7f7dc"
-	}
-
-	c.JSON(http.StatusOK, quoteResponse)
 }
 
 func (s *APIServer) createOrder(c *gin.Context) {
