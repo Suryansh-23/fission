@@ -9,10 +9,12 @@ import (
 )
 
 func (ws *WSServer) Serve() http.Handler {
+	ws.logger.Println("WebSocket server listening on port", ws.port)
 	mux := http.NewServeMux()
 
 	// main and only route for the WebSocket server
 	mux.HandleFunc("/", ws.MainHandler)
+	ws.logger.Println("WebSocket server routes registered.")
 
 	// Wrap the mux with CORS middleware
 	return ws.corsMiddleware(mux)
@@ -37,6 +39,8 @@ func (ws *WSServer) corsMiddleware(next http.Handler) http.Handler {
 }
 
 func (ws *WSServer) MainHandler(w http.ResponseWriter, r *http.Request) {
+	ws.logger.Println("WebSocket connection request received from", r.RemoteAddr)
+
 	// Upgrade the HTTP connection to a WebSocket connection
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
 	if err != nil {

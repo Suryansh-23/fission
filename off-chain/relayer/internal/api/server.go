@@ -40,6 +40,7 @@ func NewAPIServer(broadcaster *common.Broadcaster, logger *log.Logger) *http.Ser
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
+		ErrorLog:     logger,
 	}
 
 	return server

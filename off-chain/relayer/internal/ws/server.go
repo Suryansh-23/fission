@@ -21,7 +21,7 @@ type WSServer struct {
 func NewWSServer(broadcaster *common.Broadcaster, logger *log.Logger) *http.Server {
 	port, _ := strconv.Atoi(os.Getenv("WS_PORT"))
 	NewWSServer := &WSServer{
-		port:        port,
+		port:               port,
 		broadcaster: broadcaster,
 		logger:      logger,
 	}
@@ -33,6 +33,7 @@ func NewWSServer(broadcaster *common.Broadcaster, logger *log.Logger) *http.Serv
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
+		ErrorLog:     logger,
 	}
 
 	return server
