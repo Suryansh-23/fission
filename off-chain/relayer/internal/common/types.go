@@ -205,13 +205,13 @@ TS Equivalent:
 	}
 */
 type Order struct {
-	SrcChainID       int        `json:"srcChainId"`
-	Order            LimitOrder `json:"order"`
-	RelayerSignature string     `json:"relayerSignature"`
-	Signature        string     `json:"signature,omitempty"` // Optional field
+	SrcChainID       ChainID    `json:"srcChainId"`
+	LimitOrder       LimitOrder `json:"order"`
+	RelayerSignature string     `json:"relayerSignature, omitempty"` // Optional field
+	Signature        string     `json:"signature"`
 	QuoteID          string     `json:"quoteId"`
 	Extension        string     `json:"extension"`
-	SecretHashes     []string   `json:"secretHashes,omitempty"` // Optional field
+	SecretHashes     []string   `json:"secretHashes"`
 }
 
 /*
