@@ -2,8 +2,10 @@ package ws
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
+	"relayer/internal/common"
 	"strconv"
 	"time"
 
@@ -11,19 +13,23 @@ import (
 )
 
 type WSServer struct {
-	port int
+	port        int
+	broadcaster *common.Broadcaster
+	logger      *log.Logger
 }
 
-func NewWSServer() *http.Server {
-	port, _ := strconv.Atoi(os.Getenv("PORT"))
+func NewWSServer(broadcaster *common.Broadcaster, logger *log.Logger) *http.Server {
+	port, _ := strconv.Atoi(os.Getenv("WS_PORT"))
 	NewWSServer := &WSServer{
-		port: port,
+		port:        port,
+		broadcaster: broadcaster,
+		logger:      logger,
 	}
 
 	// Declare Server config
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", NewWSServer.port),
-		Handler:      NewWSServer.RegisterRoutes(),
+		Handler:      NewWSServer.Serve(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,

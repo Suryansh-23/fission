@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"relayer/internal/common"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/schema"
@@ -13,6 +14,8 @@ func (s *APIServer) RegisterRoutes() http.Handler {
 	router := gin.New()
 
 	// Register routes
+	router.GET("/", s.DefaultHandler) // test handler
+
 	router.GET("/quoter/v1.0/quote/receive", s.GetQuoteHandler)
 	router.POST("/v1.0/order/create", s.createOrder)
 	// Wrap the router with CORS middleware
@@ -40,7 +43,7 @@ func (s *APIServer) corsMiddleware(next http.Handler) http.Handler {
 
 var encoder = schema.NewEncoder()
 
-func buildQuoteRequestParams(base string, params QuoteRequestParams) (string, error) {
+func buildQuoteRequestParams(base string, params common.QuoteRequestParams) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil {
 		return "", err
@@ -49,14 +52,14 @@ func buildQuoteRequestParams(base string, params QuoteRequestParams) (string, er
 	values := url.Values{}
 	if err := encoder.Encode(params, values); err != nil {
 		return "", err
-	} 
+	}
 
 	u.RawQuery = values.Encode()
 	return u.String(), nil
 }
 
 func (s *APIServer) GetQuoteHandler(c *gin.Context) {
-	queryParams := QuoteRequestParams {
+	queryParams := common.QuoteRequestParams{
 		SrcChain:        c.Query("srcChain"),
 		DstChain:        c.Query("dstChain"),
 		SrcTokenAddress: c.Query("srcTokenAddress"),
@@ -89,7 +92,7 @@ func (s *APIServer) GetQuoteHandler(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	var quoteResponse QuoteResponse 
+	var quoteResponse common.QuoteResponse
 	if err := json.NewDecoder(resp.Body).Decode(&quoteResponse); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode quote response from 1inch Fusion+ API"})
 		return
@@ -100,4 +103,14 @@ func (s *APIServer) GetQuoteHandler(c *gin.Context) {
 
 func (s *APIServer) createOrder(c *gin.Context) {
 	// Handle the request
+}
+
+func (s *APIServer) DefaultHandler(c *gin.Context) {
+	msg := c.Query("msg")
+	if msg == "" {
+		msg = "Hello, World!"
+	}
+
+	s.broadcaster.Broadcast([]byte(msg))
+	c.String(http.StatusOK, "Message broadcasted: %s", msg)
 }
