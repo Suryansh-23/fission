@@ -17,7 +17,8 @@ func (s *APIServer) RegisterRoutes() http.Handler {
 	router.GET("/", s.DefaultHandler) // test handler
 
 	router.GET("/quoter/v1.0/quote/receive", s.GetQuoteHandler)
-	router.POST("/v1.0/order/create", s.createOrder)
+	router.GET("/relayer/v1.0/order/create", s.createOrder)
+	router.POST("/relayer/v1.0/submit", s.submitOrder)
 	// Wrap the router with CORS middleware
 	return s.corsMiddleware(router)
 }
@@ -98,11 +99,41 @@ func (s *APIServer) GetQuoteHandler(c *gin.Context) {
 		return
 	}
 
+	if quoteResponse.QuoteID == "" {
+		// If no quote ID is returned, generate a dummy one for testing
+		quoteResponse.QuoteID = "ddcae159-e73d-4f22-9234-4085e1b7f7dc"
+	}
+
 	c.JSON(http.StatusOK, quoteResponse)
 }
 
 func (s *APIServer) createOrder(c *gin.Context) {
 	// Handle the request
+}
+
+func (s *APIServer) submitOrder(c *gin.Context) {
+	body := c.Request.Body
+	defer body.Close()
+
+	order := common.Order{}
+	if err := json.NewDecoder(body).Decode(&order); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order data"})
+		s.logger.Printf("Failed to decode order data: %v", err)
+		return
+	}
+	s.logger.Printf("Received order @ ID: %s", order.QuoteID)
+
+	op := []byte("BROADC ")
+	orderBytes, err := json.Marshal(order)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to marshal order data"})
+		return
+	}
+
+	orderBytes = append(op, orderBytes...)
+	s.broadcaster.Broadcast(orderBytes)
+
+	s.logger.Printf("Order broadcasted @ ID: %s", order.QuoteID)
 }
 
 func (s *APIServer) DefaultHandler(c *gin.Context) {

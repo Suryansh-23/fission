@@ -2,14 +2,15 @@ package common
 
 /*
 TS Equivalent:
-export type QuoterRequestParams = {
-    srcChain: SupportedChain
-    dstChain: SupportedChain
-    srcTokenAddress: string
-    dstTokenAddress: string
-    amount: string``
-    walletAddress: string
-}
+
+	export type QuoterRequestParams = {
+		srcChain: SupportedChain
+		dstChain: SupportedChain
+		srcTokenAddress: string
+		dstTokenAddress: string
+		amount: string
+		walletAddress: string
+	}
 */
 
 type QuoteRequestParams struct {
@@ -43,7 +44,7 @@ TS Equivalent:
 	}
 */
 type QuoteResponse struct {
-	QuoteID           *string       `json:"quoteId,omitempty"`
+	QuoteID           string        `json:"quoteId"`
 	SrcTokenAmount    string        `json:"srcTokenAmount"`
 	DstTokenAmount    string        `json:"dstTokenAmount"`
 	Presets           QuoterPresets `json:"presets"`
@@ -188,4 +189,52 @@ type TimeLocksRaw struct {
 	DstWithdrawal         int64 `json:"dstWithdrawal"`
 	DstPublicWithdrawal   int64 `json:"dstPublicWithdrawal"`
 	DstCancellation       int64 `json:"dstCancellation"`
+}
+
+/*
+TS Equivalent:
+
+	export type Order = {
+		srcChainId: SupportedChain
+		order: LimitOrderV4Struct
+		relayerSignature: string
+		signature?: string
+		quoteId: string
+		extension: string
+		secretHashes?: string[]
+	}
+*/
+type Order struct {
+	SrcChainID       int        `json:"srcChainId"`
+	Order            LimitOrder `json:"order"`
+	RelayerSignature string     `json:"relayerSignature"`
+	Signature        string     `json:"signature,omitempty"` // Optional field
+	QuoteID          string     `json:"quoteId"`
+	Extension        string     `json:"extension"`
+	SecretHashes     []string   `json:"secretHashes,omitempty"` // Optional field
+}
+
+/*
+TS Equivalent:
+
+	export type LimitOrderV4Struct = {
+		salt: string
+		maker: string
+		receiver: string
+		makerAsset: string
+		takerAsset: string
+		makingAmount: string
+		takingAmount: string
+		makerTraits: string
+	}
+*/
+type LimitOrder struct {
+	Salt         string `json:"salt"`
+	Maker        string `json:"maker"`
+	Receiver     string `json:"receiver"`
+	MakerAsset   string `json:"makerAsset"`
+	TakerAsset   string `json:"takerAsset"`
+	MakingAmount string `json:"makingAmount"`
+	TakingAmount string `json:"takingAmount"`
+	MakerTraits  string `json:"makerTraits"`
 }
