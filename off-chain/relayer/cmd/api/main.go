@@ -6,10 +6,9 @@ import (
 	"log"
 	"net/http"
 	"os/signal"
+	"relayer/internal/api"
 	"syscall"
 	"time"
-
-	"relayer/internal/server"
 )
 
 func gracefulShutdown(apiServer *http.Server, done chan bool) {
@@ -38,9 +37,7 @@ func gracefulShutdown(apiServer *http.Server, done chan bool) {
 }
 
 func main() {
-
-	server := server.NewAPIServer()
-
+	server := api.NewAPIServer()
 	// Create a done channel to signal when the shutdown is complete
 	done := make(chan bool, 1)
 

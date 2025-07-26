@@ -12,12 +12,19 @@ import (
 
 type APIServer struct {
 	port int
+	baseURL string
+	authKey string
 }
 
 func NewAPIServer() *http.Server {
-	port, _ := strconv.Atoi(os.Getenv("PORT"))
+	port, _ := strconv.Atoi(os.Getenv("API_PORT"))
+	baseURL := os.Getenv("1INCH_URL")
+	authKey := os.Getenv("1INCH_API_KEY")
+
 	NewAPIServer := &APIServer{
 		port: port,
+		baseURL: baseURL,
+		authKey: authKey,
 	}
 
 	// Declare Server config
