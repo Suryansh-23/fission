@@ -2,13 +2,15 @@ package api
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"relayer/internal/common"
 	"relayer/internal/eip712"
+	"relayer/internal/manager"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gorilla/schema"
 )
 
@@ -18,9 +20,10 @@ func (s *APIServer) RegisterRoutes() http.Handler {
 	// Register routes
 	router.GET("/", s.DefaultHandler) // test handler
 
-	router.GET("/quoter/v1.0/quote/receive", s.GetQuoteHandler)
-	router.GET("/relayer/v1.0/order/create", s.createOrder)
-	router.POST("/relayer/v1.0/submit", s.submitOrder)
+	router.GET("/quoter/v1.0/quote/receive", s.GetQuote)
+	router.POST("/relayer/v1.0/submit", s.SubmitOrder)
+	router.POST("/relayer/v1.0/submit/secret", s.SubmitSecret)
+	router.GET("/orders/v1.0/order/status/:orderHash", s.GetOrderStatus)
 	// Wrap the router with CORS middleware
 	return s.corsMiddleware(router)
 }
@@ -61,18 +64,21 @@ func buildQuoteRequestParams(base string, params common.QuoteRequestParams) (str
 	return u.String(), nil
 }
 
-func (s *APIServer) GetQuoteHandler(c *gin.Context) {
-	if s.devMode {
-		c.JSON(http.StatusOK, s.quote)
-	} else {
-		queryParams := common.QuoteRequestParams{
-			SrcChain:        c.Query("srcChain"),
-			DstChain:        c.Query("dstChain"),
-			SrcTokenAddress: c.Query("srcTokenAddress"),
-			DstTokenAddress: c.Query("dstTokenAddress"),
-			Amount:          c.Query("amount"),
-			WalletAddress:   c.Query("walletAddress"),
-		}
+func (s *APIServer) GetQuote(c *gin.Context) {
+	s.logger.Println()
+
+	queryParams := common.QuoteRequestParams{
+		SrcChain:        c.Query("srcChain"),
+		DstChain:        c.Query("dstChain"),
+		SrcTokenAddress: c.Query("srcTokenAddress"),
+		DstTokenAddress: c.Query("dstTokenAddress"),
+		Amount:          c.Query("amount"),
+		WalletAddress:   c.Query("walletAddress"),
+	}
+
+	var quoteResponse common.Quote
+	if !s.devMode {
+		s.logger.Println("Running in dev mode, using default quote response")
 
 		// build the url string to fetch
 		urlString, err := buildQuoteRequestParams(s.baseURL, queryParams)
@@ -98,34 +104,29 @@ func (s *APIServer) GetQuoteHandler(c *gin.Context) {
 		}
 		defer resp.Body.Close()
 
-		var quoteResponse common.Quote
 		if err := json.NewDecoder(resp.Body).Decode(&quoteResponse); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode quote response from 1inch Fusion+ API"})
 			return
 		}
-
-		if quoteResponse.QuoteID == "" {
-			// If no quote ID is returned, generate a dummy one for testing
-			quoteResponse.QuoteID = "ddcae159-e73d-4f22-9234-4085e1b7f7dc"
-		}
-
-		tmp, _ := json.Marshal(quoteResponse)
-
-		s.logger.Printf("%s", tmp)
-		c.JSON(http.StatusOK, quoteResponse)
+	} else {
+		quoteResponse = *s.defaultQuote
+		quoteResponse.QuoteID = uuid.New()
 	}
+
+	s.manager.SetQuote(manager.QuoteEntry{
+		QuoteID:      quoteResponse.QuoteID,
+		QuoteRequest: &queryParams,
+		Quote:        &quoteResponse,
+	})
+
+	c.JSON(http.StatusOK, quoteResponse)
+	s.logger.Println()
 }
 
-func (s *APIServer) createOrder(c *gin.Context) {
-	// Handle the request
-}
-
-func (s *APIServer) submitOrder(c *gin.Context) {
+func (s *APIServer) SubmitOrder(c *gin.Context) {
+	s.logger.Println()
 	body := c.Request.Body
 	defer body.Close()
-
-	dec, _ := io.ReadAll(body)
-	s.logger.Printf("Received order data: %s", dec)
 
 	order := common.Order{}
 	if err := json.NewDecoder(body).Decode(&order); err != nil {
@@ -144,17 +145,71 @@ func (s *APIServer) submitOrder(c *gin.Context) {
 	}
 	s.logger.Printf("Order hash: %s", hash.Hex())
 
-	op := []byte("BROADC ")
-	orderBytes, err := json.Marshal(order)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to marshal order data"})
+	if err := s.manager.HandleOrderEvent(order); err != nil {
+		s.logger.Printf("Error handling order event: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to handle order event"})
 		return
 	}
 
-	orderBytes = append(op, orderBytes...)
-	s.manager.Broadcast(orderBytes)
+	orderStatus, err := buildOrderStatus(&order, s.manager)
+	if err != nil {
+		s.logger.Printf("Error building order status: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to build order status"})
+		return
+	}
+
+	s.manager.SetOrder(manager.OrderEntry{
+		OrderHash:   hash,
+		Order:       &order,
+		OrderStatus: orderStatus,
+	})
 
 	s.logger.Printf("Order broadcasted @ ID: %s", order.QuoteID)
+	s.logger.Println()
+}
+
+func (s *APIServer) SubmitSecret(c *gin.Context) {
+	s.logger.Println()
+	body := c.Request.Body
+	defer body.Close()
+
+	secret := common.Secret{}
+	if err := json.NewDecoder(body).Decode(&secret); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid secret submission"})
+		s.logger.Printf("Failed to decode secret submission data: %v", err)
+		return
+	}
+
+	s.logger.Printf("Received secret submission: %+v for order: %+v", secret.Secret, secret.OrderHash)
+	if err := s.manager.HandleSecretEvent(secret); err != nil {
+		s.logger.Printf("Error handling secret event: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to handle secret event"})
+		return
+	}
+
+	s.logger.Println()
+}
+
+func (s *APIServer) GetOrderStatus(c *gin.Context) {
+	orderHash := c.Param("orderHash")
+	if orderHash == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Order hash is required"})
+		return
+	}
+
+	orderEntry, err := s.manager.GetOrder(orderHash)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
+		return
+	}
+
+	orderStatus := orderEntry.OrderStatus
+	if orderStatus == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Order status not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, orderStatus)
 }
 
 func (s *APIServer) DefaultHandler(c *gin.Context) {
@@ -165,4 +220,22 @@ func (s *APIServer) DefaultHandler(c *gin.Context) {
 
 	s.manager.Broadcast([]byte(msg))
 	c.String(http.StatusOK, "Message broadcasted: %s", msg)
+}
+
+func buildOrderStatus(order *common.Order, manager *manager.Manager) (*common.OrderStatus, error) {
+	quote, err := manager.GetQuote(order.QuoteID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &common.OrderStatus{
+		Status:              common.OrderStatusPending,
+		Order:               &order.LimitOrder,
+		Extension:           order.Extension,
+		Points:              quote.Quote.Presets[quote.Quote.RecommendedPreset].Points,
+		CreatedAt:           time.Now().Format(time.RFC3339),
+		InitialRateBump:     quote.Quote.Presets[quote.Quote.RecommendedPreset].InitialRateBump,
+		FromTokenToUsdPrice: quote.Quote.Prices.USD.SrcToken,
+		ToTokenToUsdPrice:   quote.Quote.Prices.USD.DstToken,
+	}, nil
 }

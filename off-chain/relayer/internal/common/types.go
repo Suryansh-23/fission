@@ -1,5 +1,12 @@
 package common
 
+import (
+	"encoding/json"
+	"math/big"
+
+	"github.com/google/uuid"
+)
+
 /*
 TS Equivalent:
 
@@ -44,7 +51,7 @@ TS Equivalent:
 	}
 */
 type Quote struct {
-	QuoteID           string        `json:"quoteId"`
+	QuoteID           uuid.UUID     `json:"quoteId"`
 	SrcTokenAmount    string        `json:"srcTokenAmount"`
 	DstTokenAmount    string        `json:"dstTokenAmount"`
 	Presets           QuoterPresets `json:"presets"`
@@ -71,12 +78,7 @@ TS Equivalent:
 	    custom?: PresetData
 	}
 */
-type QuoterPresets struct {
-	Fast   PresetData  `json:"fast"`
-	Medium PresetData  `json:"medium"`
-	Slow   PresetData  `json:"slow"`
-	Custom *PresetData `json:"custom,omitempty"` // Optional field
-}
+type QuoterPresets = map[PresetEnum]PresetData
 
 /*
 TS Equivalent:
@@ -209,9 +211,36 @@ type Order struct {
 	LimitOrder       LimitOrder `json:"order"`
 	RelayerSignature string     `json:"relayerSignature,omitempty"` // Optional field
 	Signature        string     `json:"signature"`
-	QuoteID          string     `json:"quoteId"`
+	QuoteID          uuid.UUID  `json:"quoteId"`
 	Extension        string     `json:"extension"`
 	SecretHashes     []string   `json:"secretHashes"`
+}
+
+func (o *Order) UnmarshalJSON(bytes []byte) error {
+	var alias struct {
+		SrcChainID       big.Int    `json:"srcChainId"`
+		LimitOrder       LimitOrder `json:"order"`
+		RelayerSignature string     `json:"relayerSignature,omitempty"` // Optional field
+		Signature        string     `json:"signature"`
+		QuoteID          uuid.UUID  `json:"quoteId"`
+		Extension        string     `json:"extension"`
+		SecretHashes     []string   `json:"secretHashes"`
+	}
+
+	err := json.Unmarshal(bytes, &alias)
+	if err != nil {
+		return err
+	}
+
+	o.SrcChainID = GetChainID(alias.SrcChainID)
+	o.LimitOrder = alias.LimitOrder
+	o.RelayerSignature = alias.RelayerSignature
+	o.Signature = alias.Signature
+	o.QuoteID = alias.QuoteID
+	o.Extension = alias.Extension
+	o.SecretHashes = alias.SecretHashes
+
+	return nil
 }
 
 /*
@@ -261,7 +290,55 @@ type LimitOrder struct {
 /*
 TS Equivalent:
 
-	export enum OrderStatus {
+	export type SecretSubmission {
+		orderHash: string
+		secret: string
+	}
+*/
+type Secret struct {
+	OrderHash string `json:"orderHash"`
+	Secret    string `json:"secret"`
+}
+
+/*
+TS Equivalent:
+
+	export type OrderStatusResponse = {
+		status: OrderStatus
+		order: LimitOrderV4Struct
+		extension: string
+		points: AuctionPoint[] | null
+		cancelTx: string | null
+		fills: Fill[]
+		createdAt: string
+		auctionStartDate: number
+		auctionDuration: number
+		initialRateBump: number
+		isNativeCurrency: boolean
+		fromTokenToUsdPrice: string
+		toTokenToUsdPrice: string
+	}
+*/
+type OrderStatus struct {
+	Status              OrderStatusMode `json:"status"`
+	Order               *LimitOrder     `json:"order"`
+	Extension           string          `json:"extension"`
+	Points              []AuctionPoint  `json:"points"`
+	CancelTx            *string         `json:"cancelTx"`
+	Fills               []Fill          `json:"fills"`
+	CreatedAt           string          `json:"createdAt"`
+	AuctionStartDate    int64           `json:"auctionStartDate"`
+	AuctionDuration     int64           `json:"auctionDuration"`
+	InitialRateBump     float64         `json:"initialRateBump"`
+	IsNativeCurrency    bool            `json:"isNativeCurrency"`
+	FromTokenToUsdPrice string          `json:"fromTokenToUsdPrice"`
+	ToTokenToUsdPrice   string          `json:"toTokenToUsdPrice"`
+}
+
+/*
+TS Equivalent:
+
+	export enum OrderStatusMode {
 		Pending = 'pending',
 		Executed = 'executed',
 		Expired = 'expired',
@@ -270,13 +347,106 @@ TS Equivalent:
 		Refunded = 'refunded'
 	}
 */
-type OrderStatus string
+type OrderStatusMode string
 
 const (
-	OrderStatusPending   OrderStatus = "pending"
-	OrderStatusExecuted  OrderStatus = "executed"
-	OrderStatusExpired   OrderStatus = "expired"
-	OrderStatusCancelled OrderStatus = "cancelled"
-	OrderStatusRefunding OrderStatus = "refunding"
-	OrderStatusRefunded  OrderStatus = "refunded"
+	OrderStatusPending   OrderStatusMode = "pending"
+	OrderStatusExecuted  OrderStatusMode = "executed"
+	OrderStatusExpired   OrderStatusMode = "expired"
+	OrderStatusCancelled OrderStatusMode = "cancelled"
+	OrderStatusRefunding OrderStatusMode = "refunding"
+	OrderStatusRefunded  OrderStatusMode = "refunded"
+)
+
+/*
+TS Equivalent:
+
+	export type Fill = {
+		status: FillStatus
+		txHash: string
+		filledMakerAmount: string
+		filledAuctionTakerAmount: string
+		escrowEvents: EscrowEventData[]
+	}
+*/
+type Fill struct {
+	Status                   FillStatus        `json:"status"`
+	TxHash                   string            `json:"txHash"`
+	FilledMakerAmount        string            `json:"filledMakerAmount"`
+	FilledAuctionTakerAmount string            `json:"filledAuctionTakerAmount"`
+	EscrowEvents             []EscrowEventData `json:"escrowEvents"`
+}
+
+/*
+TS Equivalent:
+
+	export enum FillStatus {
+		Pending = 'pending',
+		Executed = 'executed',
+		Refunding = 'refunding',
+		Refunded = 'refunded'
+	}
+*/
+type FillStatus string
+
+const (
+	Pending   FillStatus = "pending"
+	Executed  FillStatus = "executed"
+	Refunding FillStatus = "refunding"
+	Refunded  FillStatus = "refunded"
+)
+
+/*
+TS Equivalent:
+
+	export type EscrowEventData = {
+		transactionHash: string
+		escrow: string
+		side: EscrowEventSide
+		action: EscrowEventAction
+		blockTimestamp: number
+	}
+*/
+type EscrowEventData struct {
+	TransactionHash string            `json:"transactionHash"`
+	Escrow          string            `json:"escrow"`
+	Side            EscrowEventSide   `json:"side"`
+	Action          EscrowEventAction `json:"action"`
+	BlockTimestamp  int64             `json:"blockTimestamp"`
+}
+
+/*
+TS Equivalent:
+
+	export enum EscrowEventSide {
+		Src = 'src',
+		Dst = 'dst'
+	}
+*/
+type EscrowEventSide string
+
+const (
+	Src EscrowEventSide = "src"
+	Dst EscrowEventSide = "dst"
+)
+
+/*
+TS Equivalent:
+
+	export enum EscrowEventAction {
+		SrcEscrowCreated = 'src_escrow_created',
+		DstEscrowCreated = 'dst_escrow_created',
+		Withdrawn = 'withdrawn',
+		FundsRescued = 'funds_rescued',
+		EscrowCancelled = 'escrow_cancelled'
+	}
+*/
+type EscrowEventAction string
+
+const (
+	SrcEscrowCreated EscrowEventAction = "src_escrow_created"
+	DstEscrowCreated EscrowEventAction = "dst_escrow_created"
+	Withdrawn        EscrowEventAction = "withdrawn"
+	FundsRescued     EscrowEventAction = "funds_rescued"
+	EscrowCancelled  EscrowEventAction = "escrow_cancelled"
 )

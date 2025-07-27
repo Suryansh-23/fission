@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"relayer/internal/api"
-	"relayer/internal/common"
+	"relayer/internal/manager"
 	"relayer/internal/ws"
 	"syscall"
 	"time"
@@ -49,12 +49,12 @@ func main() {
 	// Initialize logger
 	logger := log.New(os.Stdout, "relayer: ", log.LstdFlags)
 
-	// Initialize the broadcaster
-	broadcaster := common.NewBroadcaster()
+	// Initialize the manager
+	manager := manager.NewManager()
 
 	// create the servers
-	apiServer := api.NewAPIServer(broadcaster, logger)
-	wsServer := ws.NewWSServer(broadcaster, logger)
+	apiServer := api.NewAPIServer(manager, logger)
+	wsServer := ws.NewWSServer(manager, logger)
 
 	// Create apiDone channels to signal when the shutdown is complete
 	apiDone := make(chan bool, 1)
@@ -72,5 +72,9 @@ func main() {
 		logger.Println("WebSocket server shutdown complete.")
 	}
 
+	logger.Println("Servers down, now closing the manager...")
+	manager.Close()
+
+	logger.Println("Manager closed.")
 	logger.Println("Graceful shutdown complete.")
 }

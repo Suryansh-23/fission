@@ -1,4 +1,4 @@
-package common
+package manager
 
 import "sync"
 

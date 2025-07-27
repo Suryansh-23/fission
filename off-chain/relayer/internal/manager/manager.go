@@ -3,16 +3,16 @@ package manager
 import (
 	"fmt"
 	"log"
-	"relayer/internal/common"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/imkira/go-ttlmap"
 )
 
 type Manager struct {
 	quotes      *ttlmap.Map
 	orders      *ttlmap.Map
-	broadcaster *common.Broadcaster
+	broadcaster *Broadcaster
 	logger      *log.Logger
 }
 
@@ -30,7 +30,7 @@ func NewManager() *Manager {
 	quotes := ttlmap.New(options)
 	orders := ttlmap.New(options)
 
-	broadcaster := common.NewBroadcaster()
+	broadcaster := NewBroadcaster()
 
 	return &Manager{
 		quotes:      quotes,
@@ -39,19 +39,19 @@ func NewManager() *Manager {
 	}
 }
 
-func (m *Manager) SetQuote(quote *common.Quote) error {
-	return m.quotes.Set(quote.QuoteID, ttlmap.NewItem(quote, ttlmap.WithTTL(QuoteTTL)), nil)
+func (m *Manager) SetQuote(quote QuoteEntry) error {
+	return m.quotes.Set(quote.QuoteID.String(), ttlmap.NewItem(quote, ttlmap.WithTTL(QuoteTTL)), nil)
 }
 
-func (m *Manager) GetQuote(quoteID string) (*common.Quote, error) {
-	item, err := m.quotes.Get(quoteID)
+func (m *Manager) GetQuote(quoteID uuid.UUID) (QuoteEntry, error) {
+	item, err := m.quotes.Get(quoteID.String())
 	if err != nil {
-		return nil, fmt.Errorf("quote not found: %s", quoteID)
+		return QuoteEntry{}, fmt.Errorf("quote not found: %s", quoteID)
 	}
 
-	quote := (item.Value()).(*common.Quote)
-	if quote == nil {
-		return nil, fmt.Errorf("invalid quote type for ID: %s", quoteID)
+	quote := (item.Value()).(QuoteEntry)
+	if quote.QuoteID == uuid.Nil || quote.Quote == nil {
+		return QuoteEntry{}, fmt.Errorf("invalid quote type for ID: %s", quoteID)
 	}
 
 	return quote, nil
@@ -63,18 +63,18 @@ func (m *Manager) SetOrder(orderEntry OrderEntry) error {
 		return fmt.Errorf("failed to get quote for order: %w", err)
 	}
 
-	return m.orders.Set(orderEntry.OrderHash, ttlmap.NewItem(orderEntry, ttlmap.WithTTL(time.Second*time.Duration(quote.TimeLocks.SrcPublicCancellation))), nil)
+	return m.orders.Set(orderEntry.OrderHash.String(), ttlmap.NewItem(orderEntry, ttlmap.WithTTL(time.Second*time.Duration(quote.Quote.TimeLocks.SrcPublicCancellation))), nil)
 }
 
-func (m *Manager) GetOrder(orderHash string) (*OrderEntry, error) {
+func (m *Manager) GetOrder(orderHash string) (OrderEntry, error) {
 	item, err := m.orders.Get(orderHash)
 	if err != nil {
-		return nil, fmt.Errorf("order not found: %s", orderHash)
+		return OrderEntry{}, fmt.Errorf("order not found: %s", orderHash)
 	}
 
-	orderEntry := (item.Value()).(*OrderEntry)
-	if orderEntry == nil {
-		return nil, fmt.Errorf("invalid order type for hash: %s", orderHash)
+	orderEntry := (item.Value()).(OrderEntry)
+	if orderEntry.OrderHash.String() == "" {
+		return OrderEntry{}, fmt.Errorf("invalid order type for hash: %s", orderHash)
 	}
 
 	return orderEntry, nil

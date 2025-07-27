@@ -15,13 +15,13 @@ import (
 )
 
 type APIServer struct {
-	port    int
-	baseURL string
-	authKey string
-	manager *manager.Manager
-	logger  *log.Logger
-	devMode bool
-	quote   *common.Quote
+	port         int
+	baseURL      string
+	authKey      string
+	manager      *manager.Manager
+	logger       *log.Logger
+	devMode      bool
+	defaultQuote *common.Quote
 }
 
 func NewAPIServer(manager *manager.Manager, logger *log.Logger) *http.Server {
@@ -44,13 +44,13 @@ func NewAPIServer(manager *manager.Manager, logger *log.Logger) *http.Server {
 	}
 
 	newAPIServer := &APIServer{
-		port:    port,
-		baseURL: baseURL,
-		authKey: authKey,
-		manager: manager,
-		logger:  logger,
-		devMode: mode == "DEV",
-		quote:   &quote,
+		port:         port,
+		baseURL:      baseURL,
+		authKey:      authKey,
+		manager:      manager,
+		logger:       logger,
+		devMode:      mode == "DEV",
+		defaultQuote: &quote,
 	}
 
 	// Declare Server config

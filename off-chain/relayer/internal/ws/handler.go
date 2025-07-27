@@ -2,10 +2,8 @@ package ws
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/coder/websocket"
-	"golang.org/x/net/context"
 )
 
 func (ws *WSServer) Serve() http.Handler {
@@ -53,19 +51,36 @@ func (ws *WSServer) MainHandler(w http.ResponseWriter, r *http.Request) {
 	id := ws.manager.RegisterReceiver(msgChan)
 	defer ws.manager.UnregisterReceiver(id)
 
-	for {
-		select {
-		case m := <-msgChan:
-			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*10)
-			defer cancel()
-
-			if err := c.Write(ctx, websocket.MessageText, m); err != nil {
-				ws.logger.Printf("Failed to write message: %v", err)
+	// Start a goroutine for reading messages from the client
+	go func() {
+		for {
+			msgType, msg, err := c.Read(r.Context())
+			if err != nil {
+				ws.logger.Printf("WebSocket read error: %v", err)
 				return
 			}
+
+			if msgType != websocket.MessageText {
+				ws.logger.Println("Received non-text message, ignoring")
+				continue
+			}
+
+			ws.logger.Println("Received Text Message:", string(msg))
+			ws.manager.HandleReceiveEvent(msg)
+		}
+	}()
+
+	// Main loop for writing messages to the client
+	for {
+		select {
 		case <-r.Context().Done():
 			// Client disconnected
 			return
+		case m := <-msgChan:
+			if err := c.Write(r.Context(), websocket.MessageText, m); err != nil {
+				ws.logger.Printf("Failed to write message: %v", err)
+				return
+			}
 		}
 	}
 }
