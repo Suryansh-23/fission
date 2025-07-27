@@ -3,10 +3,12 @@ module fusion_plus::dst_escrow;
 
 use fusion_plus::immutables::{Self, Immutables};
 use fusion_plus::registry::{Self, ResolverRegistry};
-use sui::coin::Coin;
+use sui::coin::{Self, Coin};
 use sui::sui::SUI;
 use sui::event;
 use sui::hash;
+use std::type_name;
+use std::ascii::String;
 
 const EInvalidCreationTime: u64 = 0;
 const ENotTaker: u64 = 1;
@@ -17,6 +19,8 @@ public struct DstEscrowCreatedEvent has copy, drop {
     id: ID,
     hashlock: vector<u8>,
     taker: address,
+    token_package_id: String,
+    amount: u64,
 }
 
 public struct DstEscrowWithdrawnEvent has copy, drop {
@@ -48,6 +52,10 @@ public fun create_new<T: store>(
 ) {
     assert!(dst_cancellation_timestamp <= src_cancellation_timestamp, EInvalidCreationTime);
 
+    let amount = coin::value(&deposit);
+    let type_name = type_name::get<T>();
+    let token_package_id = type_name::get_address(&type_name);
+
     let timelocks = immutables::new_dst_timelocks(
         ctx.epoch_timestamp_ms(),
         dst_withdrawal_timestamp,
@@ -74,6 +82,8 @@ public fun create_new<T: store>(
         id: object::uid_to_inner(&escrow.id),
         hashlock,
         taker,
+        token_package_id,
+        amount,
     });
 
     transfer::share_object(escrow);
