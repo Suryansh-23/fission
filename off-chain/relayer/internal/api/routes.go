@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"relayer/internal/common"
@@ -97,7 +98,7 @@ func (s *APIServer) GetQuoteHandler(c *gin.Context) {
 		}
 		defer resp.Body.Close()
 
-		var quoteResponse common.QuoteResponse
+		var quoteResponse common.Quote
 		if err := json.NewDecoder(resp.Body).Decode(&quoteResponse); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode quote response from 1inch Fusion+ API"})
 			return
@@ -123,6 +124,9 @@ func (s *APIServer) submitOrder(c *gin.Context) {
 	body := c.Request.Body
 	defer body.Close()
 
+	dec, _ := io.ReadAll(body)
+	s.logger.Printf("Received order data: %s", dec)
+
 	order := common.Order{}
 	if err := json.NewDecoder(body).Decode(&order); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order data"})
@@ -130,6 +134,7 @@ func (s *APIServer) submitOrder(c *gin.Context) {
 		return
 	}
 	s.logger.Printf("Received order @ ID: %s", order.QuoteID)
+	s.logger.Println("Order details:", order.SecretHashes)
 
 	hash, err := eip712.GetOrderHashForLimitOrder(order.SrcChainID, order.LimitOrder)
 	if err != nil {

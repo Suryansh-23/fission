@@ -5,7 +5,7 @@
     "presets": {
         "fast": {
             "startAmount": "10572996802695832",
-            "secretsCount": 1,
+            "secretsCount": 3,
             "costInDstToken": "2181666219875436",
             "auctionDuration": 180,
             "startAuctionIn": 17,
@@ -17,8 +17,8 @@
                 "gasPriceEstimate": "0",
                 "gasBumpEstimate": "0"
             },
-            "allowPartialFills": false,
-            "allowMultipleFills": false
+            "allowPartialFills": true,
+            "allowMultipleFills": true
         },
         "medium": {
             "startAmount": "12754662277999739",

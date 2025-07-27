@@ -20,7 +20,7 @@ type APIServer struct {
 	broadcaster *common.Broadcaster
 	logger      *log.Logger
 	devMode     bool
-	quote       *common.QuoteResponse
+	quote       *common.Quote
 }
 
 func NewAPIServer(broadcaster *common.Broadcaster, logger *log.Logger) *http.Server {
@@ -29,7 +29,7 @@ func NewAPIServer(broadcaster *common.Broadcaster, logger *log.Logger) *http.Ser
 	authKey := os.Getenv("1INCH_API_KEY")
 	mode := os.Getenv("API_MODE")
 
-	var quote common.QuoteResponse
+	var quote common.Quote
 	if mode == "DEV" {
 		file, err := os.ReadFile("quote.json")
 		if err != nil {

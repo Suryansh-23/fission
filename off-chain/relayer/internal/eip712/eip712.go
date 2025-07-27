@@ -8,6 +8,7 @@ import (
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
+	"github.com/holiman/uint256"
 )
 
 // GetOrderHash computes the EIP712 hash for a given typed data
@@ -21,7 +22,7 @@ func GetOrderHash(typedData apitypes.TypedData) (ethcommon.Hash, error) {
 
 // BuildOrderTypedData constructs the EIP712 typed data for a limit order
 func BuildOrderTypedData(chainID common.ChainID, verifyingContract ethcommon.Address, name, version string, order common.LimitOrder) apitypes.TypedData {
-	chainIDHex := math.NewHexOrDecimal256(int64(chainID))
+	chainIDHex := (*uint256.Int)(chainID)
 
 	return apitypes.TypedData{
 		Types: apitypes.Types{
@@ -32,7 +33,7 @@ func BuildOrderTypedData(chainID common.ChainID, verifyingContract ethcommon.Add
 		Domain: apitypes.TypedDataDomain{
 			Name:              name,
 			Version:           version,
-			ChainId:           chainIDHex,
+			ChainId:           (*math.HexOrDecimal256)(chainIDHex.ToBig()),
 			VerifyingContract: verifyingContract.Hex(),
 		},
 		Message: apitypes.TypedDataMessage{
@@ -55,12 +56,12 @@ func GetLimitOrderV4Domain(chainID common.ChainID) (apitypes.TypedDataDomain, er
 		return apitypes.TypedDataDomain{}, fmt.Errorf("failed to get contract address: %w", err)
 	}
 
-	chainIDHex := math.NewHexOrDecimal256(int64(chainID))
+	chainIDHex := (*uint256.Int)(chainID)
 
 	return apitypes.TypedDataDomain{
 		Name:              LimitOrderV4TypeDataName,
 		Version:           LimitOrderV4TypeDataVersion,
-		ChainId:           chainIDHex,
+		ChainId:           (*math.HexOrDecimal256)(chainIDHex.ToBig()),
 		VerifyingContract: contract.Hex(),
 	}, nil
 }

@@ -43,7 +43,7 @@ TS Equivalent:
 	    autoK: number
 	}
 */
-type QuoteResponse struct {
+type Quote struct {
 	QuoteID           string        `json:"quoteId"`
 	SrcTokenAmount    string        `json:"srcTokenAmount"`
 	DstTokenAmount    string        `json:"dstTokenAmount"`
@@ -173,7 +173,7 @@ TS Equivalent:
 
 	export type TimeLocksRaw = {
 		srcWithdrawal: number
-	    srcPublicWithdrawal: number
+	srcPublicWithdrawal: number
 	    srcCancellation: number
 	    srcPublicCancellation: number
 	    dstWithdrawal: number
@@ -207,7 +207,7 @@ TS Equivalent:
 type Order struct {
 	SrcChainID       ChainID    `json:"srcChainId"`
 	LimitOrder       LimitOrder `json:"order"`
-	RelayerSignature string     `json:"relayerSignature, omitempty"` // Optional field
+	RelayerSignature string     `json:"relayerSignature,omitempty"` // Optional field
 	Signature        string     `json:"signature"`
 	QuoteID          string     `json:"quoteId"`
 	Extension        string     `json:"extension"`
@@ -236,5 +236,47 @@ type LimitOrder struct {
 	TakerAsset   string `json:"takerAsset"`
 	MakingAmount string `json:"makingAmount"`
 	TakingAmount string `json:"takingAmount"`
-	MakerTraits  string `json:"makerTraits"`
+	/**
+	 * The MakerTraits type is an uint256, and different parts of the number are used to encode different traits.
+	 * High bits are used for flags
+	 * 255 bit `NO_PARTIAL_FILLS_FLAG`          - if set, the order does not allow partial fills
+	 * 254 bit `ALLOW_MULTIPLE_FILLS_FLAG`      - if set, the order permits multiple fills
+	 * 253 bit                                  - unused
+	 * 252 bit `PRE_INTERACTION_CALL_FLAG`      - if set, the order requires pre-interaction call
+	 * 251 bit `POST_INTERACTION_CALL_FLAG`     - if set, the order requires post-interaction call
+	 * 250 bit `NEED_CHECK_EPOCH_MANAGER_FLAG`  - if set, the order requires to check the epoch manager
+	 * 249 bit `HAS_EXTENSION_FLAG`             - if set, the order has extension(s)
+	 * 248 bit `USE_PERMIT2_FLAG`               - if set, the order uses permit2
+	 * 247 bit `UNWRAP_WETH_FLAG`               - if set, the order requires to unwrap WETH
+	 *
+	 * Low 200 bits are used for allowed sender, expiration, nonceOrEpoch, and series
+	 * uint80 last 10 bytes of allowed sender address (0 if any)
+	 * uint40 expiration timestamp (0 if none)
+	 * uint40 nonce or epoch
+	 * uint40 series
+	 */
+	MakerTraits string `json:"makerTraits"`
 }
+
+/*
+TS Equivalent:
+
+	export enum OrderStatus {
+		Pending = 'pending',
+		Executed = 'executed',
+		Expired = 'expired',
+		Cancelled = 'cancelled',
+		Refunding = 'refunding',
+		Refunded = 'refunded'
+	}
+*/
+type OrderStatus string
+
+const (
+	OrderStatusPending   OrderStatus = "pending"
+	OrderStatusExecuted  OrderStatus = "executed"
+	OrderStatusExpired   OrderStatus = "expired"
+	OrderStatusCancelled OrderStatus = "cancelled"
+	OrderStatusRefunding OrderStatus = "refunding"
+	OrderStatusRefunded  OrderStatus = "refunded"
+)

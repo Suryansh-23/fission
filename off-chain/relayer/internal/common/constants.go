@@ -1,13 +1,17 @@
 package common
 
-// ChainID represents supported network chain IDs as an enum type
-type ChainID int64
+import (
+	"github.com/holiman/uint256"
+)
 
-const (
-	EthereumMainnet ChainID = 1
-	ArbitrumOne     ChainID = 42161
-	Polygon         ChainID = 137
-	BSC             ChainID = 56
-	Optimism        ChainID = 10
-	Base            ChainID = 8453
+// ChainID represents supported network chain IDs as an enum type
+type ChainID *uint256.Int
+
+var (
+	EthereumMainnet ChainID = uint256.NewInt(1)
+	ArbitrumOne     ChainID = uint256.NewInt(42161)
+	Polygon         ChainID = uint256.NewInt(137)
+	BSC             ChainID = uint256.NewInt(56)
+	Optimism        ChainID = uint256.NewInt(10)
+	Base            ChainID = uint256.NewInt(8453)
 )
