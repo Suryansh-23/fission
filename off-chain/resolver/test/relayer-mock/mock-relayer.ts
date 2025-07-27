@@ -18,6 +18,23 @@ export class MockRelayerServer {
             console.log(`[MockRelayer] New client connected`);
             this.clients.add(ws);
 
+            ws.on('message', (message: string) => {
+                const messageStr = message.toString();
+                console.log(`[MockRelayer] Received from resolver: ${messageStr}`);
+                
+                // Parse different message types
+                if (messageStr.startsWith('TXHASH ')) {
+                    const parts = messageStr.split(' ');
+                    if (parts.length === 4) {
+                        const [, orderHash, srcHash, dstHash] = parts;
+                        console.log(`[MockRelayer] ✅ Execution complete - Order: ${orderHash.substring(0, 10)}...`);
+                        console.log(`[MockRelayer] ✅ Source: ${srcHash.substring(0, 10)}... Dest: ${dstHash.substring(0, 10)}...`);
+                    }
+                } else {
+                    console.log(`[MockRelayer] Other message: ${messageStr}`);
+                }
+            });
+
             ws.on('close', () => {
                 console.log(`[MockRelayer] Client disconnected`);
                 this.clients.delete(ws);
@@ -36,6 +53,8 @@ export class MockRelayerServer {
                 }, 2000);
             }, 1000);
         });
+
+        console.log(`[MockRelayer] Server started on port ${this.port}`);
     }
 
     private sendTestBroadcast(ws: WebSocket) {

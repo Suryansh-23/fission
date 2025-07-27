@@ -59,6 +59,24 @@ export class ResolverWebSocketClient {
         return this.isConnected && this.ws?.readyState === WebSocket.OPEN;
     }
 
+    /**
+     * Send message to relayer
+     * @param message - Message to send to the relayer
+     */
+    public sendToRelayer(message: any): void {
+        if (!this.isReady()) {
+            console.warn('WebSocket not connected, cannot send message to relayer');
+            return;
+        }
+
+        try {
+            const messageString = typeof message === 'string' ? message : JSON.stringify(message);
+            this.ws!.send(messageString);
+        } catch (error) {
+            console.error('Failed to send message to relayer:', error);
+        }
+    }
+
     private handleOpen(): void {
         console.log('Connected to relayer WebSocket');
         this.isConnected = true;

@@ -8,6 +8,7 @@ import { isEvm, SupportedChain } from '../../../../cross-chain-sdk/src/chains';
 import { EVMClient } from '../chains/evm/evm-client';
 import { SuiClient } from '../chains/sui/sui-client';
 import { RelayerRequestParams } from '../../../../cross-chain-sdk/src/api/relayer/types';
+import { ResolverWebSocketClient } from '../communication/ws';
 
 // Order data stored in the mapping - includes original params + converted order + runtime data
 interface StoredOrderData {
@@ -29,12 +30,22 @@ export class OrderManager {
     private orders: Map<string, StoredOrderData>;
     private evmClient: EVMClient;
     private suiClient: SuiClient;
+    private wsClient: ResolverWebSocketClient | null = null;
 
     constructor(evmClient: EVMClient, suiClient: SuiClient) {
         this.orders = new Map();
         this.evmClient = evmClient;
         this.suiClient = suiClient;
         console.log('OrderManager initialized');
+    }
+
+    /**
+     * Set WebSocket client for sending messages to relayer
+     * @param wsClient - WebSocket client instance
+     */
+    public setWebSocketClient(wsClient: ResolverWebSocketClient): void {
+        this.wsClient = wsClient;
+        console.log('WebSocket client set in OrderManager');
     }
 
     /**
@@ -140,6 +151,7 @@ export class OrderManager {
             if (fromEVM) {
                 console.log(`Using EVM client for source deployment`);
                 srcResult = await this.evmClient.createSrcEscrow(srcChainId, crossChainOrder, signature, fillAmount);
+                // const srcHash = srcResult.txHash;
                 console.log(`EVM source escrow deployed - TxHash: ${srcResult.txHash}`);
                 
                 // Get source complement from factory event
@@ -187,6 +199,8 @@ export class OrderManager {
                     .withTaker(EvmAddress.fromString(this.evmClient.getAddress()));
                 
                 dstResult = await this.evmClient.createDstEscrow(dstImmutables);
+                // const dstHash = dstResult.txHash;
+            
                 console.log(`EVM destination escrow deployed`);
                 
                 // Store destination deployment timestamp
@@ -204,6 +218,7 @@ export class OrderManager {
             console.log(`Order Hash: ${orderHash}`);
             console.log(`Source TxHash: ${srcResult.txHash}`);
             console.log(`Destination Result:`, dstResult);
+            this.sendExecutionDataToRelayer(orderHash, srcResult.txHash, dstResult.txHash);
 
         } catch (error) {
             console.error(`Order execution failed for ${orderHash}:`, error);
@@ -261,6 +276,37 @@ export class OrderManager {
         
         // TODO: Store secret and trigger withdrawal process
         // This will later call orderManager.withdrawFromEscrow()
+    }
+
+    /**
+     * Send execution data to relayer
+     * @param orderHash - Hash of the order
+     * @param srcHash - Source chain transaction hash
+     * @param dstHash - Destination chain transaction hash
+     */
+    public sendExecutionDataToRelayer(
+        orderHash: string,
+        srcHash: string,
+        dstHash: string
+    ): void {
+        if (!this.wsClient) {
+            console.warn('WebSocket client not set, cannot send execution data to relayer');
+            return;
+        }
+
+        if (!this.wsClient.isReady()) {
+            console.warn('WebSocket not connected, cannot send execution data to relayer');
+            return;
+        }
+
+        try {
+            const relayerMessage = `TXHASH ${orderHash} ${srcHash} ${dstHash}`;
+            console.log(`[OrderManager] Sending to relayer: TXHASH ${orderHash.substring(0, 10)}... ${srcHash.substring(0, 10)}... ${dstHash.substring(0, 10)}...`);
+            this.wsClient.sendToRelayer(relayerMessage);
+
+        } catch (error) {
+            console.error('Failed to send execution data to relayer:', error);
+        }
     }
 
 

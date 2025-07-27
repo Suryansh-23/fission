@@ -45,7 +45,10 @@ export class Resolver {
             wsConfig.relayerWsUrl || 'ws://localhost:8080', 
             wsConfig.resolverId || 'resolver-1'
         );
+
+        // Bidirectional communication setup
         this.wsClient.setOrderManager(this.orderManager);
+        this.orderManager.setWebSocketClient(this.wsClient);
         
         console.log(`Resolver initialized with ID: ${wsConfig.resolverId}`);
     }
@@ -129,6 +132,19 @@ export class Resolver {
 
         process.on('SIGINT', () => shutdownHandler('SIGINT'));
         process.on('SIGTERM', () => shutdownHandler('SIGTERM'));
+    }
+
+    /**
+     * Test function to send mock execution data to relayer
+     */
+    public testSendExecutionData(): void {
+        console.log('[Resolver] Testing execution data send...');
+        
+        const mockOrderHash = '0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab';
+        const mockSrcHash = '0x1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff';
+        const mockDstHash = '0x9999888877776666555544443333222211110000ffffeeeedddcccbbbaaa999';
+        
+        this.orderManager.sendExecutionDataToRelayer(mockOrderHash, mockSrcHash, mockDstHash);
     }
 }
 

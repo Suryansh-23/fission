@@ -29,8 +29,15 @@ export class ResolverTestRunner {
             // The mock relayer automatically sends test messages
             console.log('[TestRunner] Waiting for test messages...');
             
-            // Keep test running for 10 seconds to see message handling
-            await this.sleep(10000);
+            // Wait a bit more for message processing
+            await this.sleep(3000);
+            
+            // Test sending execution data to relayer
+            console.log('[TestRunner] Testing execution data send...');
+            this.resolver.testSendExecutionData();
+            
+            // Keep test running for 5 more seconds to see response
+            await this.sleep(5000);
             
             console.log('[TestRunner] Test completed');
             
