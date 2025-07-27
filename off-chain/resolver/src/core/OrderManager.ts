@@ -95,6 +95,245 @@ export class OrderManager {
             return { evm: false, sui: false };
         }
     }
+
+    /**
+     * Execute cross-chain order using stored order data
+     * @param orderHash - Hash of the order to execute
+     * @param fromEVM - Whether the source chain is EVM (true) or Sui (false)
+     */
+    public async executeOrder(
+        orderHash: string,
+        fromEVM: boolean
+    ): Promise<void> {
+        console.log(`Starting order execution: ${orderHash}`);
+        console.log(`Direction: ${fromEVM ? 'EVM to Sui' : 'Sui to EVM'}`);
+
+        // Get stored order data
+        const storedOrder = this.orders.get(orderHash);
+        if (!storedOrder) {
+            throw new Error(`Order not found: ${orderHash}`);
+        }
+
+        const { crossChainOrder, originalParams } = storedOrder;
+        
+        // Extract parameters from stored data
+        const signature = originalParams.signature;
+        const srcChainId = originalParams.srcChainId;
+        const dstChainId = crossChainOrder.dstChainId;
+        const fillAmount = crossChainOrder.takingAmount;
+
+        console.log(`Fill amount: ${fillAmount.toString()}`);
+        console.log(`Source chain: ${srcChainId}, Destination chain: ${dstChainId}`);
+
+        try {
+            // Step 1: Deploy source escrow
+            console.log(`\nStep 1: Deploying source escrow on ${fromEVM ? 'EVM' : 'Sui'} chain (${srcChainId})`);
+            
+            let srcResult: { txHash: string; blockHash: string };
+            let srcClient = fromEVM ? this.evmClient : this.suiClient;
+
+            if (fromEVM) {
+                console.log(`Using EVM client for source deployment`);
+                srcResult = await this.evmClient.createSrcEscrow(srcChainId, crossChainOrder, signature, fillAmount);
+                console.log(`EVM source escrow deployed - TxHash: ${srcResult.txHash}`);
+                
+                // Get source complement from factory event
+                const [srcImmutables, srcComplement] = await this.evmClient.getDstImmutables(srcResult.blockHash);
+                storedOrder.srcComplement = srcComplement;
+            } else {
+                console.log(`Using Sui client for source deployment`);
+                srcResult = await this.suiClient.createSrcEscrow(srcChainId, crossChainOrder, signature, fillAmount);
+                console.log(`Sui source escrow deployed - TxHash: ${srcResult.txHash}`);
+                
+                // TODO: Get source complement from Sui factory event
+                // storedOrder.srcComplement = await this.suiClient.getSrcComplement(srcResult.blockHash);
+            }
+
+            // Step 2: Wait for source chain finality lock
+            const srcFinalityTimeout = srcClient.getFinalityLockTimeout();
+            console.log(`Waiting for source chain finality lock: ${srcFinalityTimeout}ms`);
+            await this.sleep(srcFinalityTimeout);
+            console.log(`Source chain finality lock completed`);
+
+            // Step 3: Deploy destination escrow
+            console.log(`\nStep 3: Deploying destination escrow on ${fromEVM ? 'Sui' : 'EVM'} chain (${dstChainId})`);
+            
+            let dstResult: any;
+            let dstClient = fromEVM ? this.suiClient : this.evmClient;
+
+            if (fromEVM) {
+                // EVM -> Sui: Build destination immutables from stored data
+                console.log(`Using Sui client for destination deployment`);
+                
+                // TODO: Update SuiClient to accept dstImmutables parameter
+                dstResult = await this.suiClient.createDstEscrow();
+                console.log(`Sui destination escrow deployed`);
+                
+                // Store destination deployment timestamp
+                storedOrder.dstDeployedAt = BigInt(Math.floor(Date.now() / 1000));
+            } else {
+                // Sui -> EVM: Build destination immutables from stored data
+                console.log(`Using EVM client for destination deployment`);
+                
+                // Derive destination immutables from source immutables and complement
+                const srcImmutables = this.getSrcImmutables(storedOrder, fromEVM);
+                const dstImmutables = srcImmutables
+                    .withComplement(storedOrder.srcComplement)
+                    .withTaker(EvmAddress.fromString(this.evmClient.getAddress()));
+                
+                dstResult = await this.evmClient.createDstEscrow(dstImmutables);
+                console.log(`EVM destination escrow deployed`);
+                
+                // Store destination deployment timestamp
+                storedOrder.dstDeployedAt = BigInt(Math.floor(Date.now() / 1000));
+            }
+
+            // Step 4: Wait for destination chain finality lock
+            const dstFinalityTimeout = dstClient.getFinalityLockTimeout();
+            console.log(`Waiting for destination chain finality lock: ${dstFinalityTimeout}ms`);
+            await this.sleep(dstFinalityTimeout);
+            console.log(`Destination chain finality lock completed`);
+
+            // Step 5: Order execution completed
+            console.log(`\nOrder execution completed successfully`);
+            console.log(`Order Hash: ${orderHash}`);
+            console.log(`Source TxHash: ${srcResult.txHash}`);
+            console.log(`Destination Result:`, dstResult);
+
+        } catch (error) {
+            console.error(`Order execution failed for ${orderHash}:`, error);
+            throw new Error(`Order execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Helper function to create delays for finality locks
+     * @param ms - Milliseconds to sleep
+     */
+    private sleep(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Derive source immutables from stored order data
+     */
+    private getSrcImmutables(storedOrder: StoredOrderData, fromEVM: boolean): any {
+        const { crossChainOrder, originalParams } = storedOrder;
+        const resolverAddress = fromEVM ? this.evmClient.getAddress() : this.suiClient.getAddress();
+        
+        return crossChainOrder.toSrcImmutables(
+            originalParams.srcChainId,
+            EvmAddress.fromString(resolverAddress),
+            crossChainOrder.takingAmount,
+            crossChainOrder.escrowExtension.hashLockInfo
+        );
+    }
+
+    /**
+     * Derive destination immutables from stored order data
+     */
+    private getDstImmutables(storedOrder: StoredOrderData, fromEVM: boolean): any {
+        if (!storedOrder.srcComplement || !storedOrder.dstDeployedAt) {
+            throw new Error('Missing srcComplement or dstDeployedAt for destination immutables calculation');
+        }
+
+        const srcImmutables = this.getSrcImmutables(storedOrder, fromEVM);
+        const resolverAddress = fromEVM ? this.suiClient.getAddress() : this.evmClient.getAddress();
+        
+        return srcImmutables
+            .withComplement(storedOrder.srcComplement)
+            .withTaker(EvmAddress.fromString(resolverAddress))
+            .withDeployedAt(storedOrder.dstDeployedAt);
+    }
+
+    /**
+     * Withdraw funds from escrow after successful cross-chain execution
+     * @param orderHash - Hash of the order to withdraw from
+     * @param side - Whether to withdraw from 'src' or 'dst' escrow
+     * @param secret - Secret to unlock the escrow
+     * @param escrowAddress - Address of the escrow contract
+     */
+    public async withdrawFromEscrow(
+        orderHash: string,
+        side: 'src' | 'dst',
+        secret: string,
+        escrowAddress: string
+    ): Promise<{ txHash: string; blockHash: string }> {
+        console.log(`Withdrawing from ${side} escrow: ${escrowAddress}`);
+
+        const storedOrder = this.orders.get(orderHash);
+        if (!storedOrder) {
+            throw new Error(`Order not found: ${orderHash}`);
+        }
+
+        try {
+            // Determine which client to use based on side and order direction
+            const { originalParams } = storedOrder;
+            const srcIsEVM = this.isEVMChain(originalParams.srcChainId);
+            const useEVMClient = (side === 'src') ? srcIsEVM : !srcIsEVM;
+
+            if (useEVMClient) {
+                // Get immutables for the withdrawal
+                const immutables = side === 'src' 
+                    ? this.getSrcImmutables(storedOrder, srcIsEVM)
+                    : this.getDstImmutables(storedOrder, srcIsEVM);
+
+                return await this.evmClient.withdrawFromEscrow(escrowAddress, secret, immutables);
+            } else {
+                // TODO: Implement Sui withdrawal
+                return await this.suiClient.withdrawFromEscrow();
+            }
+        } catch (error) {
+            console.error(`Withdrawal failed for ${orderHash}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Cancel escrow when cross-chain execution fails or times out
+     * @param orderHash - Hash of the order to cancel
+     * @param side - Whether to cancel 'src' or 'dst' escrow
+     * @param escrowAddress - Address of the escrow contract
+     */
+    public async cancelEscrow(
+        orderHash: string,
+        side: 'src' | 'dst',
+        escrowAddress: string
+    ): Promise<{ txHash: string; blockHash: string }> {
+        console.log(`Cancelling ${side} escrow: ${escrowAddress}`);
+
+        const storedOrder = this.orders.get(orderHash);
+        if (!storedOrder) {
+            throw new Error(`Order not found: ${orderHash}`);
+        }
+
+        try {
+            // Determine which client to use based on side and order direction
+            const { originalParams } = storedOrder;
+            const srcIsEVM = this.isEVMChain(originalParams.srcChainId);
+            const useEVMClient = (side === 'src') ? srcIsEVM : !srcIsEVM;
+
+            if (useEVMClient) {
+                // Get immutables for the cancellation
+                const immutables = side === 'src' 
+                    ? this.getSrcImmutables(storedOrder, srcIsEVM)
+                    : this.getDstImmutables(storedOrder, srcIsEVM);
+
+                return await this.evmClient.cancelOrder(side, escrowAddress, immutables);
+            } else {
+                // Get immutables for the cancellation
+                const immutables = side === 'src' 
+                    ? this.getSrcImmutables(storedOrder, srcIsEVM)
+                    : this.getDstImmutables(storedOrder, srcIsEVM);
+
+                // TODO: Implement Sui cancellation
+                return await this.suiClient.cancelOrder(side, escrowAddress, immutables);
+            }
+        } catch (error) {
+            console.error(`Cancellation failed for ${orderHash}:`, error);
+            throw error;
+        }
+    }
 }
 
 export default OrderManager;
