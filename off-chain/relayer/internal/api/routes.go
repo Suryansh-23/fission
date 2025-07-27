@@ -152,7 +152,7 @@ func (s *APIServer) submitOrder(c *gin.Context) {
 	}
 
 	orderBytes = append(op, orderBytes...)
-	s.broadcaster.Broadcast(orderBytes)
+	s.manager.Broadcast(orderBytes)
 
 	s.logger.Printf("Order broadcasted @ ID: %s", order.QuoteID)
 }
@@ -163,6 +163,6 @@ func (s *APIServer) DefaultHandler(c *gin.Context) {
 		msg = "Hello, World!"
 	}
 
-	s.broadcaster.Broadcast([]byte(msg))
+	s.manager.Broadcast([]byte(msg))
 	c.String(http.StatusOK, "Message broadcasted: %s", msg)
 }

@@ -14,4 +14,5 @@ var (
 	BSC             ChainID = uint256.NewInt(56)
 	Optimism        ChainID = uint256.NewInt(10)
 	Base            ChainID = uint256.NewInt(8453)
+	Sui             ChainID = uint256.NewInt(101)
 )

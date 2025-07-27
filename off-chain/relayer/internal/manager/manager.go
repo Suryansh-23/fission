@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"log"
 	"relayer/internal/common"
 	"time"
 
@@ -9,8 +10,10 @@ import (
 )
 
 type Manager struct {
-	quotes *ttlmap.Map
-	orders *ttlmap.Map
+	quotes      *ttlmap.Map
+	orders      *ttlmap.Map
+	broadcaster *common.Broadcaster
+	logger      *log.Logger
 }
 
 func NewManager() *Manager {
@@ -27,9 +30,12 @@ func NewManager() *Manager {
 	quotes := ttlmap.New(options)
 	orders := ttlmap.New(options)
 
+	broadcaster := common.NewBroadcaster()
+
 	return &Manager{
-		quotes: quotes,
-		orders: orders,
+		quotes:      quotes,
+		orders:      orders,
+		broadcaster: broadcaster,
 	}
 }
 
@@ -72,4 +78,32 @@ func (m *Manager) GetOrder(orderHash string) (*OrderEntry, error) {
 	}
 
 	return orderEntry, nil
+}
+
+func (m *Manager) RegisterReceiver(receiver chan []byte) uint64 {
+	return m.broadcaster.RegisterReceiver(receiver)
+}
+
+func (m *Manager) UnregisterReceiver(id uint64) {
+	m.broadcaster.UnregisterReceiver(id)
+}
+
+func (m *Manager) Broadcast(msg []byte) error {
+	if len(msg) == 0 {
+		return fmt.Errorf("message cannot be nil or empty")
+	}
+
+	m.broadcaster.Broadcast(msg)
+	return nil
+}
+
+func (m *Manager) Close() {
+	m.quotes.Drain()
+	m.orders.Drain()
+	m.broadcaster.Close()
+	m.logger.Println("Manager closed, all resources drained/draining.")
+
+	<-m.quotes.Draining()
+	<-m.orders.Draining()
+	m.logger.Println("All quotes and orders have been drained successfully.")
 }

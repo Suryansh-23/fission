@@ -50,8 +50,8 @@ func (ws *WSServer) MainHandler(w http.ResponseWriter, r *http.Request) {
 	defer c.CloseNow()
 
 	msgChan := make(chan []byte)
-	id := ws.broadcaster.RegisterReceiver(msgChan)
-	defer ws.broadcaster.UnregisterReceiver(id)
+	id := ws.manager.RegisterReceiver(msgChan)
+	defer ws.manager.UnregisterReceiver(id)
 
 	for {
 		select {

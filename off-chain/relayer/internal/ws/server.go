@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"relayer/internal/common"
+	"relayer/internal/manager"
 	"strconv"
 	"time"
 
@@ -13,17 +13,17 @@ import (
 )
 
 type WSServer struct {
-	port        int
-	broadcaster *common.Broadcaster
-	logger      *log.Logger
+	port    int
+	manager *manager.Manager
+	logger  *log.Logger
 }
 
-func NewWSServer(broadcaster *common.Broadcaster, logger *log.Logger) *http.Server {
+func NewWSServer(manager *manager.Manager, logger *log.Logger) *http.Server {
 	port, _ := strconv.Atoi(os.Getenv("WS_PORT"))
 	NewWSServer := &WSServer{
-		port:               port,
-		broadcaster: broadcaster,
-		logger:      logger,
+		port:    port,
+		manager: manager,
+		logger:  logger,
 	}
 
 	// Declare Server config

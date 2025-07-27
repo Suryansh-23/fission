@@ -4,19 +4,19 @@ import "sync"
 
 type Broadcaster struct {
 	mu        *sync.Mutex
-	id        int64
-	receivers map[int64]chan []byte
+	id        uint64
+	receivers map[uint64]chan []byte
 }
 
 func NewBroadcaster() *Broadcaster {
 	return &Broadcaster{
 		mu:        &sync.Mutex{},
 		id:        0,
-		receivers: make(map[int64]chan []byte),
+		receivers: make(map[uint64]chan []byte),
 	}
 }
 
-func (b *Broadcaster) RegisterReceiver(receiver chan []byte) int64 {
+func (b *Broadcaster) RegisterReceiver(receiver chan []byte) uint64 {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -26,7 +26,7 @@ func (b *Broadcaster) RegisterReceiver(receiver chan []byte) int64 {
 	return b.id - 1
 }
 
-func (b *Broadcaster) UnregisterReceiver(id int64) {
+func (b *Broadcaster) UnregisterReceiver(id uint64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -50,4 +50,16 @@ func (b *Broadcaster) Broadcast(message []byte) {
 			}
 		}
 	}()
+}
+
+func (b *Broadcaster) Close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for id, receiver := range b.receivers {
+		close(receiver)
+		delete(b.receivers, id)
+	}
+
+	b.id = 0
 }

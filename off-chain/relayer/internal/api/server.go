@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"relayer/internal/common"
+	"relayer/internal/manager"
 	"strconv"
 	"time"
 
@@ -14,16 +15,16 @@ import (
 )
 
 type APIServer struct {
-	port        int
-	baseURL     string
-	authKey     string
-	broadcaster *common.Broadcaster
-	logger      *log.Logger
-	devMode     bool
-	quote       *common.Quote
+	port    int
+	baseURL string
+	authKey string
+	manager *manager.Manager
+	logger  *log.Logger
+	devMode bool
+	quote   *common.Quote
 }
 
-func NewAPIServer(broadcaster *common.Broadcaster, logger *log.Logger) *http.Server {
+func NewAPIServer(manager *manager.Manager, logger *log.Logger) *http.Server {
 	port, _ := strconv.Atoi(os.Getenv("API_PORT"))
 	baseURL := os.Getenv("1INCH_URL")
 	authKey := os.Getenv("1INCH_API_KEY")
@@ -43,13 +44,13 @@ func NewAPIServer(broadcaster *common.Broadcaster, logger *log.Logger) *http.Ser
 	}
 
 	newAPIServer := &APIServer{
-		port:        port,
-		baseURL:     baseURL,
-		authKey:     authKey,
-		broadcaster: broadcaster,
-		logger:      logger,
-		devMode:     mode == "DEV",
-		quote:       &quote,
+		port:    port,
+		baseURL: baseURL,
+		authKey: authKey,
+		manager: manager,
+		logger:  logger,
+		devMode: mode == "DEV",
+		quote:   &quote,
 	}
 
 	// Declare Server config
