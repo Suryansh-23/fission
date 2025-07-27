@@ -13,35 +13,39 @@ export class Resolver {
     private isRunning: boolean = false;
 
     constructor() {
-        console.log('Initializing Resolver...');
-        
         // Initialize configuration
         this.configManager = new ConfigManager();
         const config = this.configManager.getConfig();
         
-        // Initialize components
-        this.orderManager = new OrderManager();
-        
-        // Initialize WebSocket client
-        const wsConfig = this.configManager.getWebSocketConfig();
-        this.wsClient = new ResolverWebSocketClient(wsConfig.relayerWsUrl, wsConfig.resolverId);
-        this.wsClient.setOrderManager(this.orderManager);
-        
-        // Initialize chain clients
+        // Initialize chain clients first (required by OrderManager)
         const chainConfig = this.configManager.getChainConfig();
+        
         this.evmClient = new EVMClient({
-            rpcUrl: chainConfig.evmRpcUrl,
+            rpcUrl: chainConfig.evmRpcUrl || 'http://localhost:8545',
             chainId: 1, 
-            privateKey: process.env.EVM_PRIVATE_KEY || '',
-            relayerContractAddress: chainConfig.evmResolverContract,
+            privateKey: process.env.EVM_PRIVATE_KEY || '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
+            relayerContractAddress: chainConfig.evmResolverContract || '0x0000000000000000000000000000000000000000',
+            escrowFactoryAddress: process.env.EVM_ESCROW_FACTORY || '0x0000000000000000000000000000000000000000'
         });
         
         this.suiClient = new SuiClient({
             network: 'testnet', 
-            privateKey: process.env.SUI_PRIVATE_KEY || '',
-            relayerPackageId: chainConfig.suiResolverPackage,
-            gasBudget: 10000000, // Default gas budget
+            privateKey: process.env.SUI_PRIVATE_KEY || '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+            relayerPackageId: chainConfig.suiResolverPackage || '0x0000000000000000000000000000000000000000',
+            escrowFactoryAddress: process.env.SUI_ESCROW_FACTORY || '0x0000000000000000000000000000000000000000',
+            gasBudget: 10000000
         });
+        
+        // Initialize OrderManager with chain clients
+        this.orderManager = new OrderManager(this.evmClient, this.suiClient);
+        
+        // Initialize WebSocket client
+        const wsConfig = this.configManager.getWebSocketConfig();
+        this.wsClient = new ResolverWebSocketClient(
+            wsConfig.relayerWsUrl || 'ws://localhost:8080', 
+            wsConfig.resolverId || 'resolver-1'
+        );
+        this.wsClient.setOrderManager(this.orderManager);
         
         console.log(`Resolver initialized with ID: ${wsConfig.resolverId}`);
     }
@@ -68,7 +72,7 @@ export class Resolver {
             this.wsClient.connect();
             
             this.isRunning = true;
-            console.log('Resolver started successfully');
+            console.log('Resolver started successfully \n');
             
         } catch (error) {
             console.error('Failed to start resolver:', error);

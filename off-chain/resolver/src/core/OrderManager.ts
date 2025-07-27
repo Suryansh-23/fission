@@ -1,4 +1,4 @@
-import { Extension } from '@1inch/cross-chain-sdk';
+import { Extension } from '../../../../cross-chain-sdk/src';
 import { 
     EvmCrossChainOrder, 
     SvmCrossChainOrder 
@@ -18,6 +18,11 @@ interface StoredOrderData {
     // Runtime data for cross-chain execution
     srcComplement?: any;
     dstDeployedAt?: bigint;  
+}
+
+export interface SecretData {
+    orderHash: string;
+    secret: string;
 }
 
 export class OrderManager {
@@ -245,6 +250,19 @@ export class OrderManager {
             .withTaker(EvmAddress.fromString(resolverAddress))
             .withDeployedAt(storedOrder.dstDeployedAt);
     }
+
+    /**
+     * Handle secret reveal from maker
+     * TODO: Later integrate with withdraw function in OrderManager
+     */
+    public handleSecretReveal(secretData: SecretData): void {
+        console.log(`Secret revealed for order ${secretData.orderHash}`);
+        console.log(`Secret: ${secretData.secret}`);
+        
+        // TODO: Store secret and trigger withdrawal process
+        // This will later call orderManager.withdrawFromEscrow()
+    }
+
 
     /**
      * Withdraw funds from escrow after successful cross-chain execution

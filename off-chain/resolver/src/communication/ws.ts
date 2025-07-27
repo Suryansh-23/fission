@@ -1,16 +1,13 @@
 import WebSocket from 'ws';
-import { RelayerRequest, RelayerRequestParams } from "../../../cross-chain-sdk/src"
+import { RelayerRequestParams } from "../../../../cross-chain-sdk/src/api/relayer/types";
 import OrderManager from '../core/OrderManager';
 
-// Temporary empty interfaces - will be moved to types folder
-export interface SecretData {}
-export interface CancelData {}
-export interface OrderData {}
+// Message types from relayer
+export type MessageType = 'BROADC' | 'SECRET';
 
-export interface WSMessage {
-    type: 'broadcast_order' | 'secret_reveal' | 'cancel_order';
-    data: OrderData | SecretData | CancelData;
-    timestamp: number;
+export interface SecretData {
+    orderHash: string;
+    secret: string;
 }
 
 export class ResolverWebSocketClient {
@@ -79,39 +76,62 @@ export class ResolverWebSocketClient {
 
     private handleMessage(data: WebSocket.Data): void {
         try {
-            const message = JSON.parse(data.toString()) as WSMessage;
-            console.log(`Received message type: ${message.type}`);
-            
+            const rawMessage = data.toString();
+            console.log(`[ResolverWebSocketClient] Received raw message: ${rawMessage.substring(0, 100)}...`);
+
             if (!this.orderManager) {
                 console.warn('No order manager set, ignoring message');
                 return;
             }
 
-            switch (message.type) {
-                case 'broadcast_order':
-                    this.orderManager.registerOrder(message.data as RelayerRequestParams);
-                    break;
+            // Parse message format: "BROADC <JSON>" or "SECRET <data>"
+            if (rawMessage.startsWith('BROADC ')) {
+                // Extract JSON part after "BROADC "
+                const jsonPart = rawMessage.substring(7); // Remove "BROADC " prefix
                 
-                case 'secret_reveal':
-                    this.orderManager.handleSecretReveal(message.data);
-                    break;
+                try {
+                    const orderData = JSON.parse(jsonPart) as RelayerRequestParams;
+                    
+                    console.log(`Processing broadcast order for chain ${orderData.srcChainId}`);
+                    console.log(`Order maker: ${orderData.order.maker}`);
+                    console.log(`Quote ID: ${orderData.quoteId}`);
+                    
+                    this.orderManager.registerOrder(orderData);
+                    
+                    // TODO: Later integrate with executeOrder function
+                    console.log('Order registered successfully');
+                    
+                } catch (parseError) {
+                    console.error('Failed to parse broadcast JSON:', parseError);
+                    console.error('JSON part:', jsonPart.substring(0, 200) + '...');
+                }
                 
-                case 'cancel_order':
-                    this.orderManager.cancelOrder(message.data as any)
-                        .then(() => {
-                            console.log('Order cancellation completed successfully');
-                        })
-                        .catch((error) => {
-                            console.error('Order cancellation failed:', error);
-                        });
-                    break;
+            } else if (rawMessage.startsWith('SECRET ')) {
+                // Extract secret data after "SECRET "
+                const secretPart = rawMessage.substring(7); // Remove "SECRET " prefix
+                const parts = secretPart.split(' ');
                 
-                default:
-                    console.warn(`Unknown message type: ${message.type}`);
+                if (parts.length >= 2) {
+                    const [orderHash, secret] = parts;
+                    
+                    console.log(`Processing secret reveal for order: ${orderHash.substring(0, 10)}...`);
+                    this.orderManager.handleSecretReveal({ orderHash, secret });
+                    
+                    // TODO: Later integrate with withdraw function
+                    console.log('Secret processed successfully');
+                } else {
+                    console.error('Invalid secret message format. Expected: "SECRET <orderHash> <secret>"');
+                    console.error('Received:', secretPart);
+                }
+                
+            } else {
+                console.warn(`Unknown message format: ${rawMessage.substring(0, 50)}`);
+                console.warn('Expected format: "BROADC <JSON>" or "SECRET <orderHash> <secret>"');
             }
+            
         } catch (error) {
             console.error('Failed to parse WebSocket message:', error);
-            // TODO: Notify OrderManager of error
+            console.error('Raw message:', data.toString());
         }
     }
 

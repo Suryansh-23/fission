@@ -4,7 +4,6 @@ export interface EVMConfig {
   privateKey: string;
   relayerContractAddress: string;
   escrowFactoryAddress: string;
-  escrowImplementationAddress: string; // For address calculation
   gasMultiplier?: number;
   maxGasPrice?: bigint;
   confirmations?: number;
@@ -15,7 +14,6 @@ export interface SuiConfig {
   privateKey: string;
   relayerPackageId: string;
   escrowFactoryAddress: string;
-  escrowImplementationAddress: string; // For address calculation
   gasBudget: number;
-  masxGasPrice?: number;
+  maxGasPrice?: number;
 }

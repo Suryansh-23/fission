@@ -24,7 +24,7 @@ export class EscrowFactory {
      * Get source escrow deployment event from block hash
      * Returns immutables and complement needed for destination deployment
      */
-    public async getSrcDeployEvent(blockHash: string): Promise<[any, any]> { // Using any for now due to SDK import issues
+    public async getSrcDeployEvent(blockHash: string): Promise<[any, any]> { 
         const event = this.iface.getEvent('SrcEscrowCreated')!;
         const logs = await this.provider.getLogs({
             blockHash,
@@ -56,8 +56,8 @@ export class EscrowFactory {
                 maker: Sdk.Address.fromBigInt(complement[0]) as any, // Type assertion for SDK compatibility
                 amount: complement[1],
                 token: Sdk.Address.fromBigInt(complement[2]) as any,
-                taker: Sdk.Address.fromBigInt(complement[3]) as any, // Adding required taker field
-                safetyDeposit: complement[4] // Adjust index if needed
+                taker: Sdk.Address.fromBigInt(complement[3]) as any, 
+                safetyDeposit: complement[4] 
             })
         ];
     }
