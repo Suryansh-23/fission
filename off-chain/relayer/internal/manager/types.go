@@ -16,7 +16,7 @@ const (
 	SECRET_EVENT = "SECRET"
 
 	// Resolver -> Relayer
-	// Transaction hash event: TXHASH <ORDER_HASH_HEX> <CHAIN_ID> <TX_HASH>
+	// Transaction hash event: TXHASH <ORDER_HASH_HEX> <SRC_TX_HASH> <DST_TX_HASH>
 	TXHASH_EVENT = "TXHASH"
 )
 

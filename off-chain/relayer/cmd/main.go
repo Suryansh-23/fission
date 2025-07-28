@@ -50,7 +50,7 @@ func main() {
 	logger := log.New(os.Stdout, "relayer: ", log.LstdFlags)
 
 	// Initialize the manager
-	manager := manager.NewManager()
+	manager := manager.NewManager(logger)
 
 	// create the servers
 	apiServer := api.NewAPIServer(manager, logger)

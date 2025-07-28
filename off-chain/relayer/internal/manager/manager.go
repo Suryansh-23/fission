@@ -3,8 +3,11 @@ package manager
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
+	"github.com/block-vision/sui-go-sdk/sui"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/google/uuid"
 	"github.com/imkira/go-ttlmap"
 )
@@ -13,10 +16,12 @@ type Manager struct {
 	quotes      *ttlmap.Map
 	orders      *ttlmap.Map
 	broadcaster *Broadcaster
+	evmClient   *ethclient.Client
+	suiClient   *sui.Client
 	logger      *log.Logger
 }
 
-func NewManager() *Manager {
+func NewManager(logger *log.Logger) *Manager {
 	options := &ttlmap.Options{
 		InitialCapacity: 32,
 		OnWillExpire: func(key string, item ttlmap.Item) {
@@ -27,15 +32,36 @@ func NewManager() *Manager {
 		},
 	}
 
+	// init the ttlmap for quotes and orders
 	quotes := ttlmap.New(options)
 	orders := ttlmap.New(options)
 
+	// Initialize the broadcaster for comms
 	broadcaster := NewBroadcaster()
+
+	// init the clients
+	evmRPC := os.Getenv("EVM_RPC_URL")
+	if evmRPC == "" {
+		logger.Fatal("EVM_RPC_URL environment variable is not set")
+	}
+	evmClient, err := ethclient.Dial(evmRPC)
+	if err != nil {
+		logger.Fatalf("failed to connect to EVM RPC: %v", err)
+	}
+
+	suiRPC := os.Getenv("SUI_RPC_URL")
+	if suiRPC == "" {
+		logger.Fatal("SUI_RPC_URL environment variable is not set")
+	}
+	suiClient := (sui.NewSuiClient(suiRPC)).(*sui.Client)
 
 	return &Manager{
 		quotes:      quotes,
 		orders:      orders,
 		broadcaster: broadcaster,
+		evmClient:   evmClient,
+		suiClient:   suiClient,
+		logger:      logger,
 	}
 }
 
@@ -106,4 +132,6 @@ func (m *Manager) Close() {
 	<-m.quotes.Draining()
 	<-m.orders.Draining()
 	m.logger.Println("All quotes and orders have been drained successfully.")
+
+	m.evmClient.Close()
 }

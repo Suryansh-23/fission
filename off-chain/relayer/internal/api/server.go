@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"relayer/internal/common"
 	"relayer/internal/manager"
 	"strconv"
@@ -32,7 +33,7 @@ func NewAPIServer(manager *manager.Manager, logger *log.Logger) *http.Server {
 
 	var quote common.Quote
 	if mode == "DEV" {
-		file, err := os.ReadFile("quote.json")
+		file, err := os.ReadFile(path.Join("assets", "quote.json"))
 		if err != nil {
 			logger.Fatal("Error opening log file:", err)
 		}
