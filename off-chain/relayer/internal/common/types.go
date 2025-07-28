@@ -213,7 +213,7 @@ type Order struct {
 	Signature        string     `json:"signature"`
 	QuoteID          uuid.UUID  `json:"quoteId"`
 	Extension        string     `json:"extension"`
-	SecretHashes     []string   `json:"secretHashes"`
+	SecretHashes     []string   `json:"secretHashes,omitempty"`
 }
 
 func (o *Order) UnmarshalJSON(bytes []byte) error {
@@ -450,3 +450,29 @@ const (
 	FundsRescued     EscrowEventAction = "funds_rescued"
 	EscrowCancelled  EscrowEventAction = "escrow_cancelled"
 )
+
+/*
+TS Equivalent:
+
+		export type ReadyToAcceptSecretFills = {
+	 	   fills: ReadyToAcceptSecretFill[]
+		}
+*/
+type ReadyToAcceptSecretFills struct {
+	Fills []ReadyToAcceptSecretFill `json:"fills"`
+}
+
+/*
+TS Equivalent:
+
+	export type ReadyToAcceptSecretFill = {
+		idx: number
+		srcEscrowDeployTxHash: string
+		dstEscrowDeployTxHash: string
+	}
+*/
+type ReadyToAcceptSecretFill struct {
+	Idx                   int    `json:"idx"`
+	SrcEscrowDeployTxHash string `json:"srcEscrowDeployTxHash"`
+	DstEscrowDeployTxHash string `json:"dstEscrowDeployTxHash"`
+}

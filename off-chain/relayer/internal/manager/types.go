@@ -2,6 +2,7 @@ package manager
 
 import (
 	"relayer/internal/common"
+	"sync"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
@@ -30,4 +31,6 @@ type OrderEntry struct {
 	OrderHash   ethcommon.Hash
 	Order       *common.Order
 	OrderStatus *common.OrderStatus
+	OrderFills  *common.ReadyToAcceptSecretFills
+	FillsMutex  *sync.Mutex
 }

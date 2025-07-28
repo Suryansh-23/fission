@@ -23,6 +23,7 @@ func (s *APIServer) RegisterRoutes() http.Handler {
 	router.GET("/quoter/v1.0/quote/receive", s.GetQuote)
 	router.POST("/relayer/v1.0/submit", s.SubmitOrder)
 	router.POST("/relayer/v1.0/submit/secret", s.SubmitSecret)
+	router.GET("/orders/v1.0/order/ready-to-accept-secret-fills/:orderHash", s.GetReadyToAcceptSecretFills)
 	router.GET("/orders/v1.0/order/status/:orderHash", s.GetOrderStatus)
 	// Wrap the router with CORS middleware
 	return s.corsMiddleware(router)
@@ -162,6 +163,9 @@ func (s *APIServer) SubmitOrder(c *gin.Context) {
 		OrderHash:   hash,
 		Order:       &order,
 		OrderStatus: orderStatus,
+		OrderFills: &common.ReadyToAcceptSecretFills{
+			Fills: make([]common.ReadyToAcceptSecretFill, 0),
+		},
 	})
 
 	s.logger.Printf("Order broadcasted @ ID: %s", order.QuoteID)
@@ -210,6 +214,41 @@ func (s *APIServer) GetOrderStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, orderStatus)
+}
+
+func (s *APIServer) GetReadyToAcceptSecretFills(c *gin.Context) {
+	orderHash := c.Param("orderHash")
+	if orderHash == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Order hash is required"})
+		return
+	}
+
+	orderEntry, err := s.manager.GetOrder(orderHash)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
+		return
+	}
+
+	// lock and borrow ref
+	orderEntry.FillsMutex.Lock()
+	fills := orderEntry.OrderFills.Fills
+
+	// replace old ref with new
+	orderEntry.OrderFills.Fills = make([]common.ReadyToAcceptSecretFill, 0, cap(fills)/2)
+	orderEntry.FillsMutex.Unlock()
+
+	if len(fills) == 0 {
+		c.JSON(http.StatusOK, common.ReadyToAcceptSecretFills{
+			Fills: []common.ReadyToAcceptSecretFill{},
+		})
+		return
+	}
+
+	readyToAcceptSecretFills := common.ReadyToAcceptSecretFills{
+		Fills: fills,
+	}
+
+	c.JSON(http.StatusOK, readyToAcceptSecretFills)
 }
 
 func (s *APIServer) DefaultHandler(c *gin.Context) {

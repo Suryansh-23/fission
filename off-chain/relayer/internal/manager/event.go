@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"time"
 
 	"relayer/internal/chain"
 	"relayer/internal/common"
@@ -57,45 +59,134 @@ func (m *Manager) handleTxHashEvent(parts []string) {
 	}
 
 	orderHash := parts[0]
-	srcTxHash := ethcommon.HexToHash(parts[1])
-	dstTxHash := parts[2]
-
 	orderEntry, err := m.GetOrder(orderHash)
 	if err != nil {
 		m.logger.Printf("Error getting order for hash %s: %v", orderHash, err)
-		return false
+		return
+	}
+
+	quoteEntry, err := m.GetQuote(orderEntry.Order.QuoteID)
+	if err != nil {
+		m.logger.Printf("Error getting quote for order %s: %v", orderHash, err)
+		return
 	}
 
 	// src chain is Ethereum
 	if (*orderEntry.Order.SrcChainID).Eq(common.EthereumMainnet) {
-		evt, srcEscrowAddress, timestamp, err := chain.FetchEvmSrcEscrowEvent(context.Background(), m.evmClient, srcTxHash, m.logger)
+		srcTxHash := ethcommon.HexToHash(parts[1])
+		dstTxHash := parts[2]
+
+		srcEvt, srcEscrowAddress, srcTimestamp, err := chain.FetchEvmSrcEscrowEvent(context.Background(), m.evmClient, srcTxHash, m.logger)
 		if err != nil {
 			m.logger.Printf("Error fetching EVM SrcEscrowCreatedEvent: %v", err)
-			return false
+			return
 		}
 
-		if evt.SrcImmutables.
+		// verification checks
+		if srcEvt.SrcImmutables.Amount.String() != orderEntry.Order.LimitOrder.MakingAmount {
+			return
+		}
 
+		if srcEvt.SrcImmutables.Maker.Hex() != orderEntry.Order.LimitOrder.Maker {
+			return
+		}
+
+		if srcEvt.SrcImmutables.SafetyDeposit.String() != quoteEntry.Quote.SrcSafetyDeposit {
+			return
+		}
+
+		if srcEvt.SrcImmutables.Token.Hex() != quoteEntry.QuoteRequest.SrcTokenAddress {
+			return
+		}
+
+		bal, err := chain.FetchERC20Balance(m.evmClient, srcEvt.SrcImmutables.Token, srcEscrowAddress)
+		if err != nil {
+			return
+		}
+
+		if bal.String() != orderEntry.Order.LimitOrder.MakingAmount {
+			return
+		}
+
+		// TODO: Handle destination chain events & checks
+
+		ttl := computeTTL(srcTimestamp, time.Now(), quoteEntry.Quote)
+		if ttl > 0 {
+			time.AfterFunc(ttl+SecretTTLBuffer, func() {
+				m.allowSecretRelease(orderHash, srcEvt.SrcImmutables.Hashlock, srcTxHash.Hex(), dstTxHash)
+			})
+		} else {
+			m.allowSecretRelease(orderHash, srcEvt.SrcImmutables.Hashlock, srcTxHash.Hex(), dstTxHash)
+		}
 	} else {
+		srcTxHash := parts[1]
+		dstTxHash := ethcommon.HexToHash(parts[2])
+
+		dstEvt, dstTimestamp, err := chain.FetchEvmDstEscrowEvent(context.Background(), m.evmClient, dstTxHash)
+		if err != nil {
+			m.logger.Printf("Error fetching EVM DstEscrowCreatedEvent: %v", err)
+			return
+		}
+
+		// verification checks
+		bal, err := chain.FetchERC20Balance(m.evmClient, ethcommon.HexToAddress(quoteEntry.QuoteRequest.DstTokenAddress), dstEvt.Escrow)
+		if err != nil {
+			m.logger.Printf("Error fetching ERC20 balance: %v", err)
+			return
+		}
+
+		if bal.String() != orderEntry.Order.LimitOrder.MakingAmount {
+			return
+		}
+
+		// TODO: Handle src chain events & checks
+
+		ttl := computeTTL(time.Now(), dstTimestamp, quoteEntry.Quote)
+		if ttl > 0 {
+			time.AfterFunc(ttl+SecretTTLBuffer, func() {
+				m.allowSecretRelease(orderHash, dstEvt.Hashlock, srcTxHash, dstTxHash.Hex())
+			})
+		} else {
+			m.allowSecretRelease(orderHash, dstEvt.Hashlock, srcTxHash, dstTxHash.Hex())
+		}
+	}
+}
+
+func computeTTL(srcTimestamp time.Time, dstTimestamp time.Time, quote *common.Quote) time.Duration {
+	srcDuration := time.Since(srcTimestamp)
+	dstDuration := time.Since(dstTimestamp)
+
+	srcTTL := math.Max(float64(quote.TimeLocks.SrcWithdrawal)-srcDuration.Seconds(), 0)
+	dstTTL := math.Max(float64(quote.TimeLocks.DstWithdrawal)-dstDuration.Seconds(), 0)
+
+	return time.Duration(math.Max(srcTTL, dstTTL)) * time.Second
+}
+
+func (m *Manager) allowSecretRelease(orderHash string, hashlock ethcommon.Hash, srcTxHash string, dstTxHash string) {
+	orderEntry, err := m.GetOrder(orderHash)
+	if err != nil {
+		m.logger.Printf("Error getting order for hash %s: %v", orderHash, err)
+		return
 	}
 
-	// m.logger.Printf("Received tx hash event: orderHash=%s, srcTxHash=%s, dstTxHash=%s", orderHash, srcTxHash, dstTxHash)
-
-	// evt, srcEscrowAddress, timestamp, err := chain.FetchEvmSrcEscrowEvent(context.Background(), m.evmClient, srcTxHash, m.logger)
-	// if err != nil {
-	// 	m.logger.Printf("Error fetching EVM SrcEscrowCreatedEvent: %v", err)
-	// 	return fmt.Errorf("failed to fetch event: %w", err)
-	// }
-
-	// m.logger.Printf("Fetched EVM SrcEscrowCreatedEvent: %+v @ address %s at timestamp %s", evt, srcEscrowAddress, timestamp.String())
-
-	// evt, timestamp, err := chain.FetchEvmDstEscrowEvent(context.Background(), m.evmClient, srcTxHash)
-	// if err != nil {
-	// 	m.logger.Printf("Error fetching EVM DstEscrowCreatedEvent: %v", err)
-	// 	return fmt.Errorf("failed to fetch event: %w", err)
-	// }
-
-	// m.logger.Printf("Fetched EVM DstEscrowCreatedEvent: %+v at timestamp %s", evt, timestamp.String())
-
-	return nil
+	orderEntry.FillsMutex.Lock()
+	// partial fills
+	if len(orderEntry.Order.SecretHashes) > 1 {
+		for idx, secretHash := range orderEntry.Order.SecretHashes {
+			if secretHash == hashlock.Hex() {
+				orderEntry.OrderFills.Fills = append(orderEntry.OrderFills.Fills, common.ReadyToAcceptSecretFill{
+					Idx:                   idx,
+					SrcEscrowDeployTxHash: srcTxHash,
+					DstEscrowDeployTxHash: dstTxHash,
+				})
+			}
+		}
+	} else {
+		orderEntry.OrderFills.Fills = append(orderEntry.OrderFills.Fills, common.ReadyToAcceptSecretFill{
+			Idx:                   0,
+			SrcEscrowDeployTxHash: srcTxHash,
+			DstEscrowDeployTxHash: dstTxHash,
+		})
+	}
+	orderEntry.FillsMutex.Unlock()
 }
