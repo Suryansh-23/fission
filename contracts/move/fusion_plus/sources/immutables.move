@@ -86,6 +86,13 @@ public fun new<T: store>(
     }
 }
 
+public(package) fun set_hashlock<T: store>(
+    immutables: &mut Immutables<T>,
+    hashlock: vector<u8>,
+) {
+    immutables.hashlock = hashlock;
+}
+
 // Getter functions for accessing immutable fields
 public fun get_order_hash<T: store>(immutables: &Immutables<T>): vector<u8> {
     immutables.order_hash

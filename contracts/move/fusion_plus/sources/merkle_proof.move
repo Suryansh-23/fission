@@ -6,17 +6,24 @@
 module fusion_plus::merkle_proof;
 
 use sui::hash;
+use std::bcs;
 
-// Create validation key: keccak256(abi.encodePacked(orderHash, merkleRoot))
-public fun compute_validation_key(order_hash: &vector<u8>, merkle_root: &vector<u8>): vector<u8> {
-    let mut combined = vector::empty<u8>();
-    vector::append(&mut combined, *order_hash);
-    vector::append(&mut combined, *merkle_root);
-    hash::keccak256(&combined)
+public struct ValidationKey has copy, drop {
+    order_hash: vector<u8>,
+    merkle_root: vector<u8>,
+}
+
+public fun compute_validation_key(order_hash: vector<u8>, merkle_root: vector<u8>): vector<u8> {
+    let data = ValidationKey {
+        order_hash: order_hash,
+        merkle_root: merkle_root,
+    };
+
+    hash::keccak256(&bcs::to_bytes(&data))
 }
 
 // Compute leaf hash: keccak256(abi.encodePacked(uint64(index), secretHash))
-public fun compute_leaf_hash(index: u64, secret_hash: &vector<u8>): vector<u8> {
+public fun compute_leaf_hash(index: u16, secret_hash: &vector<u8>): vector<u8> {
     let mut combined = vector::empty<u8>();
     
     // Convert u64 to bytes (big-endian, 8 bytes)
@@ -34,7 +41,7 @@ public fun compute_leaf_hash(index: u64, secret_hash: &vector<u8>): vector<u8> {
 // Process merkle proof to compute root
 public fun process_merkle_proof(
     leaf: &vector<u8>,
-    index: u64,
+    index: u16,
     proof: &vector<vector<u8>>,
 ): vector<u8> {
     let mut current_hash = *leaf;
@@ -68,7 +75,7 @@ public fun process_merkle_proof(
 // Verify a merkle proof against a known root
 public fun verify_proof(
     leaf: &vector<u8>,
-    index: u64,
+    index: u16,
     proof: &vector<vector<u8>>,
     root: &vector<u8>,
 ): bool {
@@ -78,7 +85,7 @@ public fun verify_proof(
 
 // Complete merkle proof verification for order fills
 public fun verify_proof_for_order(
-    secret_index: u64,
+    secret_index: u16,
     secret_hash: &vector<u8>,
     merkle_proof: &vector<vector<u8>>,
     merkle_root: &vector<u8>,

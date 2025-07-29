@@ -3,7 +3,6 @@ module fusion_plus::order;
 use sui::coin::{Self, Coin};
 use sui::event;
 use sui::hash;
-use sui::table::{Self, Table};
 
 // Errors
 const EInvalidMakingAmount: u64 = 0;
@@ -28,18 +27,6 @@ public struct Order<phantom T: store> has key {
     merkle_root: Option<vector<u8>>, // For multiple fills
 }
 
-// Validation tracking for multiple fills
-public struct ValidationData has store, copy, drop {
-    last_index: u64,
-    secret_hash: vector<u8>,
-}
-
-// Global validation storage
-public struct ValidationRegistry has key {
-    id: UID,
-    validations: Table<vector<u8>, ValidationData>, // key -> ValidationData
-}
-
 // Events
 public struct OrderCreated has copy, drop {
     id: ID,
@@ -49,19 +36,13 @@ public struct OrderCreated has copy, drop {
     taking_amount: u64,
 }
 
-// Initialize the package - create the global validation registry
-fun init(ctx: &mut TxContext) {
-    let validation_registry = ValidationRegistry {
-        id: object::new(ctx),
-        validations: table::new(ctx),
-    };
-    
-    // Share the validation registry globally
-    transfer::share_object(validation_registry);
+// Initialize the package
+fun init(_ctx: &mut TxContext) {
+    // No initialization needed for order module
 }
 
 // Function to create order object (maker calls this to deposit coins)
-public fun create_order<T: store>(
+public entry fun create_order<T: store>(
     receiver: address,
     making_amount: u64,
     taking_amount: u64,
@@ -113,6 +94,32 @@ public fun create_order<T: store>(
     transfer::share_object(order);
 }
 
+// Function to split coins from order for escrow (package-only access)
+public(package) fun split_coins<T: store>(
+    order: &mut Order<T>,
+    amount: u64,
+    ctx: &mut TxContext,
+): Coin<T> {
+    assert!(coin::value(&order.remaining_coins) >= amount, EInvalidMakingAmount);
+    
+    order.filled_amount = order.filled_amount + amount;
+        
+    coin::split(&mut order.remaining_coins, amount, ctx)
+}
+
+/// Function for maker to withdraw all remaining tokens from their order
+public fun withdraw<T: store>(
+    order: &mut Order<T>, 
+    ctx: &mut TxContext,
+) : Coin<T> {
+    assert!(ctx.sender() == order.maker, EUnauthorizedAccess);
+    
+    let remaining_amount = coin::value(&order.remaining_coins);
+    assert!(remaining_amount > 0, EInvalidMakingAmount);
+    
+    coin::split(&mut order.remaining_coins, remaining_amount, ctx)
+}
+
 // Getter functions for order fields
 public fun get_maker<T: store>(order: &Order<T>): address {
     order.maker
@@ -154,89 +161,7 @@ public fun get_merkle_root<T: store>(order: &Order<T>): Option<vector<u8>> {
     order.merkle_root
 }
 
-// Function to split coins from order for escrow (package-only access)
-public(package) fun split_coins<T: store>(
-    order: &mut Order<T>,
-    amount: u64,
-    ctx: &mut TxContext,
-): Coin<T> {
-    // Check if order still has remaining coins
-    assert!(coin::value(&order.remaining_coins) > 0, EUnauthorizedAccess);
-    assert!(coin::value(&order.remaining_coins) >= amount, EInvalidMakingAmount);
-    
-    order.filled_amount = order.filled_amount + amount;
-        
-    coin::split(&mut order.remaining_coins, amount, ctx)
-}
-
-// Validation functions for merkle proofs
-public fun add_validation(
-    registry: &mut ValidationRegistry,
-    key: vector<u8>,
-    validation_data: ValidationData,
-) {
-    if (table::contains(&registry.validations, key)) {
-        *table::borrow_mut(&mut registry.validations, key) = validation_data;
-    } else {
-        table::add(&mut registry.validations, key, validation_data);
-    }
-}
-
-public fun get_validation(
-    registry: &ValidationRegistry,
-    key: &vector<u8>,
-): Option<ValidationData> {
-    if (table::contains(&registry.validations, *key)) {
-        option::some(*table::borrow(&registry.validations, *key))
-    } else {
-        option::none()
-    }
-}
-
-public fun has_validation(
-    registry: &ValidationRegistry,
-    key: &vector<u8>,
-): bool {
-    table::contains(&registry.validations, *key)
-}
-
-// Helper function to create validation data
-public fun create_validation_data(
-    last_index: u64,
-    secret_hash: vector<u8>,
-): ValidationData {
-    ValidationData {
-        last_index,
-        secret_hash,
-    }
-}
-
-// Getter functions for validation data
-public fun get_last_index(validation: &ValidationData): u64 {
-    validation.last_index
-}
-
-public fun get_secret_hash(validation: &ValidationData): vector<u8> {
-    validation.secret_hash
-}
-
-// Simple order status check - order is active if it has remaining coins
 public fun is_order_active<T: store>(order: &Order<T>): bool {
     coin::value(&order.remaining_coins) > 0
 }
 
-/// Function for maker to withdraw all remaining tokens from their order
-public fun withdraw<T: store>(
-    order: &mut Order<T>, 
-    ctx: &mut TxContext,
-) : Coin<T> {
-    // Only the maker can withdraw their own tokens
-    assert!(ctx.sender() == order.maker, EUnauthorizedAccess);
-    
-    // Get all remaining coins
-    let remaining_amount = coin::value(&order.remaining_coins);
-    assert!(remaining_amount > 0, EInvalidMakingAmount);
-    
-    // Extract all remaining coins
-    coin::split(&mut order.remaining_coins, remaining_amount, ctx)
-}
