@@ -1,4 +1,4 @@
-package eip712
+package hash
 
 import (
 	"fmt"

@@ -1,12 +1,15 @@
-package eip712
+package hash
 
 import (
+	"bytes"
 	"fmt"
 
 	"relayer/internal/common"
 
+	"github.com/block-vision/sui-go-sdk/mystenbcs"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/holiman/uint256"
 )
@@ -69,6 +72,17 @@ func GetLimitOrderV4Domain(chainID common.ChainID) (apitypes.TypedDataDomain, er
 // GetOrderHashForLimitOrder is a convenience function that builds typed data and computes hash for a limit order
 // This is the main function you'll want to call with your order type & chainID
 func GetOrderHashForLimitOrder(chainID common.ChainID, order common.LimitOrder) (ethcommon.Hash, error) {
+	if (*uint256.Int)(chainID).Eq(common.Sui) {
+		bcsEncodedOrder := bytes.Buffer{}
+		bcsEncoder := mystenbcs.NewEncoder(&bcsEncodedOrder)
+
+		if err := bcsEncoder.Encode(order); err != nil {
+			return ethcommon.Hash{}, fmt.Errorf("failed to encode order: %w", err)
+		}
+
+		return crypto.Keccak256Hash(bcsEncodedOrder.Bytes()), nil
+	}
+
 	contract, err := GetLimitOrderContract(chainID)
 	if err != nil {
 		return ethcommon.Hash{}, fmt.Errorf("failed to get contract address: %w", err)

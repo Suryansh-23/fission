@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"relayer/internal/common"
-	"relayer/internal/eip712"
+	"relayer/internal/hash"
 	"relayer/internal/manager"
 	"time"
 
@@ -138,7 +138,7 @@ func (s *APIServer) SubmitOrder(c *gin.Context) {
 	s.logger.Printf("Received order @ ID: %s", order.QuoteID)
 	s.logger.Println("Order details:", order.SecretHashes)
 
-	hash, err := eip712.GetOrderHashForLimitOrder(order.SrcChainID, order.LimitOrder)
+	hash, err := hash.GetOrderHashForLimitOrder(order.SrcChainID, order.LimitOrder)
 	if err != nil {
 		s.logger.Printf("Error computing order hash: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to compute order hash"})
