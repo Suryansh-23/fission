@@ -1,11 +1,9 @@
-#[allow(lint(coin_field))]
 module fusion_plus::immutables;
 
 use std::bcs;
 use sui::hash;
-
-use sui::coin::{Self, Coin};
 use sui::sui::SUI;
+use sui::balance::{Self, Balance};
 
 public enum Timelocks has drop, store {
     SrcTimelocks {
@@ -28,8 +26,8 @@ public struct Immutables<phantom T: store> has store {
     hashlock: vector<u8>,
     maker: address,
     taker: address,
-    deposit: Coin<T>,
-    safety_deposit: Coin<SUI>,
+    deposit: Balance<T>,
+    safety_deposit: Balance<SUI>,
     timelocks: Timelocks,
 }
 
@@ -73,8 +71,8 @@ public fun new<T: store>(
     hashlock: vector<u8>,
     maker: address,
     taker: address,
-    deposit: Coin<T>,
-    safety_deposit: Coin<SUI>,
+    deposit: Balance<T>,
+    safety_deposit: Balance<SUI>,
     timelocks: Timelocks,
 ): Immutables<T> {
     Immutables {
@@ -162,24 +160,10 @@ public fun get_deployment_time<T: store>(immutables: &Immutables<T>): u64 {
     }
 }
 
-// Coin value getter functions (non-destructive)
 public fun get_deposit_value<T: store>(immutables: &Immutables<T>): u64 {
-    coin::value(&immutables.deposit)
+    balance::value(&immutables.deposit)
 }
 
 public fun get_safety_deposit_value<T: store>(immutables: &Immutables<T>): u64 {
-    coin::value(&immutables.safety_deposit)
-}
-
-// Extraction functions (destructive - for withdrawal/cancellation)
-public(package) fun extract_deposit<T: store>(immutables: &mut Immutables<T>, ctx: &mut TxContext): Coin<T> {
-    // Extract the full deposit and replace with a zero-value coin
-    let deposit_value = coin::value(&immutables.deposit);
-    coin::split(&mut immutables.deposit, deposit_value, ctx)
-}
-
-public(package) fun extract_safety_deposit<T: store>(immutables: &mut Immutables<T>, ctx: &mut TxContext): Coin<SUI> {
-    // Extract the full safety deposit and replace with a zero-value coin
-    let safety_deposit_value = coin::value(&immutables.safety_deposit);
-    coin::split(&mut immutables.safety_deposit, safety_deposit_value, ctx)
+    balance::value(&immutables.safety_deposit)
 }
