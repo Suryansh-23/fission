@@ -1,53 +1,475 @@
 import { SuiConfig } from "../../config/chain";
 import { ChainClient } from "../interface/chain-interface";
+import { SuiClient as SuiSdkClient } from '@mysten/sui/client';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+import { Transaction } from '@mysten/sui/transactions';
+import { SuiCoinHelper } from '../helper/coin-sui';
+import { SuiImmutablesHelper, DstTimelocks, ImmutablesData } from '../helper/immutables-sui';
+import { SuiDstEscrowHelper, CreateDstEscrowParams } from './dst-escrow';
+import { SuiResolverRegistry } from '../helper/resolver-registry-sui';
 
-export class SuiClient implements ChainClient {
+export interface SuiEscrowInfo {
+    escrowId: string;
+    coinType: string;
+    orderHash: Uint8Array;
+    hashlock: Uint8Array;
+    maker: string;
+    taker: string;
+    amount: bigint;
+}
+
+export class SuiClient {
     private config: SuiConfig;
+    private client: SuiSdkClient;
+    private keypair: Ed25519Keypair;
+    private coinHelper: SuiCoinHelper;
+    private immutablesHelper: SuiImmutablesHelper;
+    private dstEscrowHelper: SuiDstEscrowHelper;
+    private registryHelper: SuiResolverRegistry;
+    private resolverCapId?: string; // Store the resolver capability ID
 
     // Finality lock timeout for Sui chain (in milliseconds)
     private static readonly FINALITY_LOCK_TIMEOUT = 10000;
 
     constructor(config: SuiConfig) {
         this.config = config;
-        console.log("SuiClient initialized with config");
+        
+        // Initialize Sui SDK client
+        this.client = new SuiSdkClient({
+            url: config.rpcUrl,
+        });
+
+        // Initialize keypair from private key
+        this.keypair = Ed25519Keypair.fromSecretKey(config.privateKey);
+
+        // Initialize helpers
+        this.coinHelper = new SuiCoinHelper(this.client, this.keypair);
+        this.immutablesHelper = new SuiImmutablesHelper(this.client, this.keypair, config.packageId);
+        this.dstEscrowHelper = new SuiDstEscrowHelper(this.client, this.keypair, config.packageId);
+        this.registryHelper = new SuiResolverRegistry(
+            this.client, 
+            this.keypair, 
+            config.packageId, 
+            config.registryObjectId
+        );
+
+        console.log("SuiClient initialized with config", {
+            address: this.getAddress(),
+            packageId: config.packageId,
+            registryId: config.registryObjectId
+        });
+    }
+
+    /**
+     * Set the resolver capability ID (needed for admin operations)
+     */
+    setResolverCapId(capId: string): void {
+        this.resolverCapId = capId;
+    }
+
+    /**
+     * Get the resolver capability ID
+     */
+    getResolverCapId(): string {
+        if (!this.resolverCapId) {
+            throw new Error('Resolver capability ID not set. Call setResolverCapId() first.');
+        }
+        return this.resolverCapId;
     }
     
     async createSrcEscrow(chainId: number, order: any, signature: string, fillAmount: bigint): Promise<{ txHash: string; blockHash: string }> {
         // TODO: Implement Sui source escrow deployment
-        throw new Error("Sui createSrcEscrow not implemented yet");
+        throw new Error("Sui createSrcEscrow not implemented yet - requires src_escrow Move contract");
     }
 
-    async createDstEscrow(): Promise<any> {}
+    /**
+     * Create destination escrow on Sui chain.
+     * Maps to the resolver::create_dst_escrow Move function
+     */
+    async createDstEscrow(
+        orderHash: Uint8Array,
+        hashlock: Uint8Array,
+        maker: string,
+        taker: string,
+        depositAmount: bigint,
+        safetyDepositAmount: bigint,
+        coinType: string = SuiCoinHelper.SUI_TYPE,
+        dstWithdrawalTimestamp?: bigint,
+        dstPublicWithdrawalTimestamp?: bigint,
+        dstCancellationTimestamp?: bigint,
+        srcCancellationTimestamp?: bigint
+    ): Promise<{ txHash: string; blockHash: string; escrowId?: string }> {
+        try {
+            console.log('Creating destination escrow on Sui chain');
 
-    async withdrawFromEscrow(): Promise<any> {}
+            const tx = new Transaction();
+
+            // Use standard timelocks if not provided
+            const now = this.immutablesHelper.getCurrentTimestamp();
+            const hour = BigInt(60 * 60 * 1000);
+            
+            const finalDstWithdrawal = dstWithdrawalTimestamp || (now + hour);
+            const finalDstPublicWithdrawal = dstPublicWithdrawalTimestamp || (now + (2n * hour));
+            const finalDstCancellation = dstCancellationTimestamp || (now + (24n * hour));
+            const finalSrcCancellation = srcCancellationTimestamp || (now + (48n * hour));
+
+            // Validate timelock constraints
+            if (finalDstCancellation > finalSrcCancellation) {
+                throw new Error('Destination cancellation time must be before or equal to source cancellation time');
+            }
+
+            // Prepare deposit coin
+            let depositCoin;
+            if (coinType === SuiCoinHelper.SUI_TYPE) {
+                // For SUI, split from gas
+                [depositCoin] = tx.splitCoins(tx.gas, [depositAmount]);
+            } else {
+                // For other tokens, prepare coins appropriately
+                const selectedCoins = await this.coinHelper.selectCoinsForAmount(depositAmount, coinType);
+                
+                if (selectedCoins.length === 1 && selectedCoins[0].balance === depositAmount) {
+                    depositCoin = tx.object(selectedCoins[0].coinObjectId);
+                } else {
+                    // Merge and split as needed
+                    const primaryCoin = selectedCoins[0];
+                    const coinsToMerge = selectedCoins.slice(1);
+                    
+                    if (coinsToMerge.length > 0) {
+                        tx.mergeCoins(
+                            tx.object(primaryCoin.coinObjectId),
+                            coinsToMerge.map(coin => tx.object(coin.coinObjectId))
+                        );
+                    }
+                    
+                    [depositCoin] = tx.splitCoins(
+                        tx.object(primaryCoin.coinObjectId),
+                        [depositAmount]
+                    );
+                }
+            }
+
+            // Prepare safety deposit (always SUI)
+            const [safetyDepositCoin] = tx.splitCoins(tx.gas, [safetyDepositAmount]);
+
+            // Call the resolver contract's create_dst_escrow function
+            tx.moveCall({
+                target: `${this.config.packageId}::resolver::create_dst_escrow`,
+                typeArguments: [coinType],
+                arguments: [
+                    tx.object(this.getResolverCapId()), // _cap: &ResolverCap
+                    tx.pure.vector('u8', Array.from(orderHash)), // order_hash: vector<u8>
+                    tx.pure.vector('u8', Array.from(hashlock)), // hashlock: vector<u8>
+                    tx.pure.address(maker), // maker: 
+                    tx.pure.address(taker), 
+                    depositCoin, // deposit: Coin<T>
+                    safetyDepositCoin, // safety_deposit: Coin<SUI>
+                    tx.pure.u64(finalDstWithdrawal), // dst_withdrawal_timestamp: u64
+                    tx.pure.u64(finalDstPublicWithdrawal), // dst_public_withdrawal_timestamp: u64
+                    tx.pure.u64(finalDstCancellation), // dst_cancellation_timestamp: u64
+                    tx.pure.u64(finalSrcCancellation), // src_cancellation_timestamp: u64
+                ],
+            });
+
+            const result = await this.client.signAndExecuteTransaction({
+                transaction: tx,
+                signer: this.keypair,
+                options: {
+                    showEffects: true,
+                    showEvents: true,
+                    showObjectChanges: true,
+                },
+            });
+
+            console.log(`Destination escrow created - TxHash: ${result.digest}`);
+
+            // Extract escrow ID from object changes
+            let escrowId: string | undefined;
+            if (result.objectChanges) {
+                for (const change of result.objectChanges) {
+                    if (change.type === 'created' && change.objectType.includes('DstEscrow')) {
+                        escrowId = change.objectId;
+                        break;
+                    }
+                }
+            }
+
+            return {
+                txHash: result.digest,
+                blockHash: result.digest, // Sui uses digest as unique identifier
+                escrowId
+            };
+
+        } catch (error) {
+            console.error('Error creating destination escrow:', error);
+            throw error;
+        }
+    }
 
     /**
-     * Cancel escrow on Sui chain (placeholder implementation)
+     * Withdraw from escrow - simplified interface for ChainClient compatibility
+     */
+    async withdrawFromEscrow(): Promise<any> {
+        throw new Error("Use withdrawFromEscrowDetailed() method for full functionality");
+    }
+
+    /**
+     * Withdraw from destination escrow on Sui chain with full parameters
+     * Maps to the resolver::withdraw_dst Move function
+     */
+    async withdrawFromEscrowDetailed(
+        escrowId: string,
+        secret: Uint8Array,
+        coinType: string = SuiCoinHelper.SUI_TYPE
+    ): Promise<{ txHash: string; blockHash: string }> {
+        try {
+            console.log('Withdrawing from Sui destination escrow');
+
+            if (!escrowId || !secret) {
+                throw new Error('Escrow ID and secret are required for Sui withdrawal');
+            }
+
+            const tx = new Transaction();
+
+            // Call the resolver contract's withdraw_dst function
+            tx.moveCall({
+                target: `${this.config.packageId}::resolver::withdraw_dst`,
+                typeArguments: [coinType],
+                arguments: [
+                    tx.object(this.getResolverCapId()), 
+                    tx.object(escrowId), 
+                    tx.pure.vector('u8', Array.from(secret)), 
+                ],
+            });
+
+            const result = await this.client.signAndExecuteTransaction({
+                transaction: tx,
+                signer: this.keypair,
+                options: {
+                    showEffects: true,
+                    showEvents: true,
+                    showObjectChanges: true,
+                },
+            });
+
+            console.log(`Withdrawal successful - TxHash: ${result.digest}`);
+            return {
+                txHash: result.digest,
+                blockHash: result.digest
+            };
+
+        } catch (error) {
+            console.error('Error withdrawing from escrow:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Public withdraw from destination escrow (for registered resolvers)
+     */
+    async publicWithdrawFromEscrow(
+        escrowId: string,
+        secret: Uint8Array,
+        coinType: string = SuiCoinHelper.SUI_TYPE
+    ): Promise<{ txHash: string; blockHash: string }> {
+        try {
+            console.log('Public withdrawing from Sui destination escrow');
+
+            const tx = new Transaction();
+
+            // Call the resolver contract's public_withdraw_dst function
+            tx.moveCall({
+                target: `${this.config.packageId}::resolver::public_withdraw_dst`,
+                typeArguments: [coinType],
+                arguments: [
+                    tx.object(this.getResolverCapId()), // _cap: &ResolverCap
+                    tx.object(escrowId), // escrow: &mut DstEscrow<T>
+                    tx.object(this.config.registryObjectId), // registry: &ResolverRegistry
+                    tx.pure.vector('u8', Array.from(secret)), // secret: vector<u8>
+                ],
+            });
+
+            const result = await this.client.signAndExecuteTransaction({
+                transaction: tx,
+                signer: this.keypair,
+                options: {
+                    showEffects: true,
+                    showEvents: true,
+                    showObjectChanges: true,
+                },
+            });
+
+            console.log(`Public withdrawal successful - TxHash: ${result.digest}`);
+            return {
+                txHash: result.digest,
+                blockHash: result.digest
+            };
+
+        } catch (error) {
+            console.error('Error in public withdrawal:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Cancel escrow on Sui chain
      * @param side - Whether this is source ('src') or destination ('dst') escrow
-     * @param escrowAddress - Address of the escrow contract to cancel
-     * @param immutables - Immutables object for the escrow
+     * @param escrowId - ID of the escrow object to cancel
+     * @param coinType - Type of coin in the escrow
      */
     async cancelOrder(
         side: 'src' | 'dst', 
-        escrowAddress: string, 
-        immutables: any
+        escrowId: string, 
+        coinType: string = SuiCoinHelper.SUI_TYPE
     ): Promise<{ txHash: string; blockHash: string }> {
-        // TODO: Implement Sui escrow cancellation
-        console.log(`TODO: Cancel ${side} escrow at address: ${escrowAddress} on Sui`);
-        throw new Error("Sui cancelOrder not implemented yet");
+        try {
+            console.log(`Cancelling ${side} escrow with ID: ${escrowId}`);
+
+            if (!escrowId) {
+                throw new Error('Escrow ID required for cancellation');
+            }
+
+            const tx = new Transaction();
+
+            // Choose the appropriate cancel function based on side
+            const target = side === 'dst' 
+                ? `${this.config.packageId}::resolver::cancel_dst`
+                : `${this.config.packageId}::resolver::cancel_src`;
+
+            tx.moveCall({
+                target,
+                typeArguments: [coinType],
+                arguments: [
+                    tx.object(this.getResolverCapId()), // _cap: &ResolverCap
+                    tx.object(escrowId), // escrow: &mut DstEscrow<T> or &mut SrcEscrow<T>
+                ],
+            });
+
+            const result = await this.client.signAndExecuteTransaction({
+                transaction: tx,
+                signer: this.keypair,
+                options: {
+                    showEffects: true,
+                    showEvents: true,
+                    showObjectChanges: true,
+                },
+            });
+
+            console.log(`${side} escrow cancelled successfully - TxHash: ${result.digest}`);
+            
+            return {
+                txHash: result.digest,
+                blockHash: result.digest
+            };
+
+        } catch (error) {
+            console.error(`Error cancelling ${side} escrow:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get escrow details by object ID
+     */
+    async getEscrowInfo(escrowId: string): Promise<SuiEscrowInfo | null> {
+        try {
+            const escrowObject = await this.client.getObject({
+                id: escrowId,
+                options: {
+                    showContent: true,
+                    showType: true,
+                },
+            });
+
+            if (!escrowObject.data?.content || escrowObject.data.content.dataType !== 'moveObject') {
+                return null;
+            }
+
+            const fields = escrowObject.data.content.fields as any;
+            const immutables = fields.immutables;
+
+            return {
+                escrowId,
+                coinType: this.extractCoinTypeFromObjectType(escrowObject.data.type!),
+                orderHash: new Uint8Array(immutables.order_hash),
+                hashlock: new Uint8Array(immutables.hashlock),
+                maker: immutables.maker,
+                taker: immutables.taker,
+                amount: BigInt(immutables.deposit?.value || 0),
+            };
+
+        } catch (error) {
+            console.error('Error getting escrow info:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Check if we're registered as a resolver
+     */
+    async isRegisteredResolver(): Promise<boolean> {
+        try {
+            return await this.registryHelper.isResolverRegistered();
+        } catch (error) {
+            console.error('Error checking resolver registration:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Register as a resolver with safety deposit
+     */
+    async registerAsResolver(depositAmount: bigint): Promise<{ txHash: string; blockHash: string }> {
+        try {
+            const result = await this.registryHelper.addResolver(depositAmount);
+            return {
+                txHash: result.digest,
+                blockHash: result.digest
+            };
+        } catch (error) {
+            console.error('Error registering as resolver:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Extract coin type from Sui object type string
+     */
+    private extractCoinTypeFromObjectType(objectType: string): string {
+        // Extract T from DstEscrow<T> or SrcEscrow<T>
+        const match = objectType.match(/<([^>]+)>/);
+        return match ? match[1] : SuiCoinHelper.SUI_TYPE;
     }
 
     getAddress(): string {
-        return ""
+        return this.keypair.getPublicKey().toSuiAddress();
     }
 
     async isHealthy(): Promise<boolean> {
-        return true; 
+        try {
+            // Check if we can make a basic RPC call
+            await this.client.getLatestCheckpointSequenceNumber();
+            return true;
+        } catch (error) {
+            console.error('Sui client health check failed:', error);
+            return false;
+        }
     }
 
     // Get finality lock timeout for this chain
     public getFinalityLockTimeout(): number {
         return SuiClient.FINALITY_LOCK_TIMEOUT;
+    }
+
+    /**
+     * Get helper instances for advanced operations
+     */
+    getHelpers() {
+        return {
+            coin: this.coinHelper,
+            immutables: this.immutablesHelper,
+            dstEscrow: this.dstEscrowHelper,
+            registry: this.registryHelper,
+        };
     }
 }
 

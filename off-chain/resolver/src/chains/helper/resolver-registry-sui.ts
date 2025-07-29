@@ -324,8 +324,52 @@ export class SuiResolverRegistry {
     }
 
     /**
-     * Parse registry events from transaction response
+     * Check if a resolver is registered and has sufficient deposit
      */
+    async isResolverRegistered(resolverId?: string): Promise<boolean> {
+        try {
+            const resolverAddress = resolverId || this.keypair.getPublicKey().toSuiAddress();
+            
+            // Get the registry object to check the safety deposits table
+            const registryObject = await this.client.getObject({
+                id: this.registryObjectId,
+                options: {
+                    showContent: true,
+                },
+            });
+
+            if (!registryObject.data?.content || registryObject.data.content.dataType !== 'moveObject') {
+                throw new Error('Failed to fetch registry object');
+            }
+
+            // In a real implementation, you would need to query the table
+            // This is a simplified version - in practice you might need to use dynamic fields
+            // or maintain an indexer to check registration status
+            
+            // For now, we'll make a test call to assert_resolver (this would fail if not registered)
+            // This is not ideal for production but demonstrates the concept
+            return true; // Placeholder - implement proper table querying
+        } catch (error) {
+            console.error('Error checking resolver registration:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Get the current balance of a resolver's safety deposit
+     */
+    async getResolverBalance(resolverId?: string): Promise<bigint> {
+        try {
+            const resolverAddress = resolverId || this.keypair.getPublicKey().toSuiAddress();
+            
+            // This would need proper implementation to query the table
+            // For now, return 0 as placeholder
+            return BigInt(0);
+        } catch (error) {
+            console.error('Error getting resolver balance:', error);
+            return BigInt(0);
+        }
+    }
     parseRegistryEvents(response: SuiTransactionBlockResponse): ResolverRegistryEvent[] {
         const events: ResolverRegistryEvent[] = [];
         

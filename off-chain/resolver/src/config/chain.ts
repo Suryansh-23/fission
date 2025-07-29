@@ -11,7 +11,10 @@ export interface EVMConfig {
 
 export interface SuiConfig {
   network: string;
+  rpcUrl: string;
   privateKey: string;
+  packageId: string; 
+  registryObjectId: string; 
   relayerPackageId: string;
   escrowFactoryAddress: string;
   gasBudget: number;

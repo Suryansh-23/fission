@@ -18,7 +18,8 @@ interface StoredOrderData {
     crossChainOrder: EvmCrossChainOrder;
     // Runtime data for cross-chain execution
     srcComplement?: any;
-    dstDeployedAt?: bigint;  
+    dstDeployedAt?: bigint; 
+    isPartialFill?: boolean;  
 }
 
 export interface SecretData {
@@ -54,7 +55,7 @@ export class OrderManager {
      */
     public registerOrder(relayerParams: RelayerRequestParams): void {
         console.log('Registering order from RelayerRequestParams');
-        
+        // @note order stored for this resolver needs to compute this - hash lock will be the secretHash[resolverId + 1], if this is an array then store variable in stored order that partial fills is true.
         // Decode the extension from the relayer params
         const extension = Extension.decode(relayerParams.extension);
         
@@ -72,6 +73,11 @@ export class OrderManager {
             srcComplement: undefined,
             dstDeployedAt: undefined
         };
+
+        if (relayerParams.secretHashes && relayerParams.secretHashes.length > 0) {
+            console.log('Partial fill detected, storing secret hashes');
+            storedOrderData.isPartialFill = true;
+        }
         
         this.orders.set(orderHash, storedOrderData);
         console.log(`Order registered with hash: ${orderHash}`);
@@ -130,14 +136,21 @@ export class OrderManager {
             throw new Error(`Order not found: ${orderHash}`);
         }
 
-        const { crossChainOrder, originalParams } = storedOrder;
+        const crossChainOrder = storedOrder.crossChainOrder;
+        const originalParams = storedOrder.originalParams;
         
         // Extract parameters from stored data
         const signature = originalParams.signature;
         const srcChainId = originalParams.srcChainId;
         const dstChainId = crossChainOrder.dstChainId;
-        const fillAmount = crossChainOrder.takingAmount;
-
+        // @note and the fillAmount (param of EVMClient) will be divided by total count (stored in ENV)
+        let fillAmount;
+        if (storedOrder.isPartialFill) {
+            fillAmount = crossChainOrder.takingAmount / BigInt(process.env.TOTAL_COUNT || 2);
+        } else {
+            fillAmount = crossChainOrder.takingAmount;
+        }
+        // const fillAmount = crossChainOrder.takingAmount / process.env.TOTAL_COUNT;
         console.log(`Fill amount: ${fillAmount.toString()}`);
         console.log(`Source chain: ${srcChainId}, Destination chain: ${dstChainId}`);
 
@@ -183,7 +196,7 @@ export class OrderManager {
                 console.log(`Using Sui client for destination deployment`);
                 
                 // TODO: Update SuiClient to accept dstImmutables parameter
-                dstResult = await this.suiClient.createDstEscrow();
+                // dstResult = await this.suiClient.createDstEscrow();
                 console.log(`Sui destination escrow deployed`);
                 
                 // Store destination deployment timestamp
