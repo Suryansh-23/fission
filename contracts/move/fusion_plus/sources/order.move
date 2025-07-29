@@ -14,6 +14,7 @@ const EUnauthorizedAccess: u64 = 1;
 public struct Order<phantom T: store> has key {
     id: UID,
     maker: address,
+    receiver: address,
     order_hash: vector<u8>,
     making_amount: u64,
     taking_amount: u64,
@@ -61,6 +62,7 @@ fun init(ctx: &mut TxContext) {
 
 // Function to create order object (maker calls this to deposit coins)
 public fun create_order<T: store>(
+    receiver: address,
     making_amount: u64,
     taking_amount: u64,
     maker_asset: vector<u8>,
@@ -86,6 +88,7 @@ public fun create_order<T: store>(
     let order = Order<T> {
         id: object::new(ctx),
         maker: ctx.sender(),
+        receiver,
         order_hash,
         making_amount,
         taking_amount,
@@ -113,6 +116,10 @@ public fun create_order<T: store>(
 // Getter functions for order fields
 public fun get_maker<T: store>(order: &Order<T>): address {
     order.maker
+}
+
+public fun get_receiver<T: store>(order: &Order<T>): address {
+    order.receiver
 }
 
 public fun get_order_hash<T: store>(order: &Order<T>): vector<u8> {
