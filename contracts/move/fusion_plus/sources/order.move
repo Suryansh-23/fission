@@ -27,6 +27,14 @@ public struct Order<phantom T: store> has key {
     merkle_root: Option<vector<u8>>, // For multiple fills
 }
 
+public struct OrderHashData has copy, drop {
+    salt: vector<u8>,
+    maker: address,
+    receiver: address,
+    making_amount: u64,
+    taking_amount: u64,
+}
+
 // Events
 public struct OrderCreated has copy, drop {
     id: ID,
@@ -37,9 +45,7 @@ public struct OrderCreated has copy, drop {
 }
 
 // Initialize the package
-fun init(_ctx: &mut TxContext) {
-    // No initialization needed for order module
-}
+fun init(_ctx: &mut TxContext) {}
 
 // Function to create order object (maker calls this to deposit coins)
 public entry fun create_order<T: store>(
@@ -55,17 +61,18 @@ public entry fun create_order<T: store>(
     deposit: Coin<T>,
     ctx: &mut TxContext,
 ) {
-    // Verify sufficient deposit
     assert!(coin::value(&deposit) == making_amount, EInvalidMakingAmount);
-    
-    // Compute order hash (simplified - in practice would include all order fields)
-    let mut order_data = vector::empty<u8>();
-    vector::append(&mut order_data, sui::address::to_bytes(ctx.sender()));
-    vector::append(&mut order_data, sui::bcs::to_bytes(&making_amount));
-    vector::append(&mut order_data, sui::bcs::to_bytes(&taking_amount));
-    vector::append(&mut order_data, salt);
-    let order_hash = hash::keccak256(&order_data);
-    
+
+    let data = OrderHashData {
+        salt,
+        maker: ctx.sender(),
+        receiver,
+        making_amount,
+        taking_amount,
+    };
+
+    let order_hash = hash::keccak256(&sui::bcs::to_bytes(&data));
+
     let order = Order<T> {
         id: object::new(ctx),
         maker: ctx.sender(),
@@ -82,7 +89,7 @@ public entry fun create_order<T: store>(
         filled_amount: 0,
         merkle_root,
     };
-    
+
     event::emit(OrderCreated {
         id: object::uid_to_inner(&order.id),
         maker: ctx.sender(),
@@ -101,22 +108,19 @@ public(package) fun split_coins<T: store>(
     ctx: &mut TxContext,
 ): Coin<T> {
     assert!(coin::value(&order.remaining_coins) >= amount, EInvalidMakingAmount);
-    
+
     order.filled_amount = order.filled_amount + amount;
-        
+
     coin::split(&mut order.remaining_coins, amount, ctx)
 }
 
 /// Function for maker to withdraw all remaining tokens from their order
-public fun withdraw<T: store>(
-    order: &mut Order<T>, 
-    ctx: &mut TxContext,
-) : Coin<T> {
+public fun withdraw<T: store>(order: &mut Order<T>, ctx: &mut TxContext): Coin<T> {
     assert!(ctx.sender() == order.maker, EUnauthorizedAccess);
-    
+
     let remaining_amount = coin::value(&order.remaining_coins);
     assert!(remaining_amount > 0, EInvalidMakingAmount);
-    
+
     coin::split(&mut order.remaining_coins, remaining_amount, ctx)
 }
 
@@ -164,4 +168,3 @@ public fun get_merkle_root<T: store>(order: &Order<T>): Option<vector<u8>> {
 public fun is_order_active<T: store>(order: &Order<T>): bool {
     coin::value(&order.remaining_coins) > 0
 }
-
