@@ -1,9 +1,10 @@
 module fusion_plus::src_escrow;
 
-use fusion_plus::immutables::{Self, Immutables};
+use fusion_plus::immutables::{Self, Immutables, Timelocks};
 use fusion_plus::merkle_proof;
 use fusion_plus::order::{Self, Order};
 use fusion_plus::registry::{Self, ResolverRegistry};
+use std::type_name;
 use sui::coin::{Self, Coin};
 use sui::ecdsa_k1;
 use sui::ecdsa_r1;
@@ -11,7 +12,6 @@ use sui::ed25519;
 use sui::event;
 use sui::hash;
 use sui::sui::SUI;
-use sui::table::{Self, Table};
 
 const EInvalidSecret: u64 = 1;
 const EInvalidTaker: u64 = 2;
@@ -29,18 +29,6 @@ const RESCUE_DELAY: u64 = 600_000; // 10 minutes in milliseconds
 const SIGNATURE_SCHEME_ED25519: u8 = 0;
 const SIGNATURE_SCHEME_ECDSA_K1: u8 = 1;
 const SIGNATURE_SCHEME_ECDSA_R1: u8 = 2;
-
-// Validation tracking for multiple fills
-public struct ValidationData has copy, drop, store {
-    index: u16,
-    leaf: vector<u8>,
-}
-
-// Global validation registry to prevent secret reuse across all orders/escrows
-public struct ValidationRegistry has key {
-    id: UID,
-    validations: Table<vector<u8>, ValidationData>, // key -> ValidationData
-}
 
 public struct SrcEscrowCreated has copy, drop {
     id: ID,
@@ -107,29 +95,18 @@ public fun new_merkle_proof_data(
 #[allow(lint(coin_field))]
 public struct SrcEscrow<phantom T: store> has key {
     id: UID,
-    immutables: Immutables<T>,
+    immutables: Immutables,
     deposit: Coin<T>,
     safety_deposit: Coin<SUI>,
-}
-
-// Initialize the package - create the global validation registry
-fun init(ctx: &mut TxContext) {
-    let validation_registry = ValidationRegistry {
-        id: object::new(ctx),
-        validations: table::new(ctx),
-    };
-
-    // Share the validation registry globally
-    transfer::share_object(validation_registry);
 }
 
 public fun create_new<T: store>(
     merkle_data: MerkleProofData,
     order: &mut Order<T>,
     signature_data: SignatureData,
+    deposit_amount: u64,
     safety_deposit: Coin<SUI>,
-    immutables: Immutables<T>,
-    validation_registry: &mut ValidationRegistry,
+    timelocks: Timelocks,
     ctx: &mut TxContext,
 ) {
     let sender = ctx.sender();
@@ -147,13 +124,14 @@ public fun create_new<T: store>(
     );
     assert!(verify, EInvalidSignature);
 
+    let type_name = type_name::get<T>();
     let maker = order::get_maker(order);
     let making_amount = order::get_making_amount(order);
     let remaining_making_amount = order::get_remaining_amount(order);
     let is_partial_fill_allowed = order::is_partial_fill_allowed(order);
     let is_multiple_fills_allowed = order::is_multiple_fills_allowed(order);
 
-    let actual_making_amount = immutables::get_deposit_value(&immutables);
+    let actual_making_amount = deposit_amount;
     let actual_taking_amount = order::get_taking_amount(order);
 
     if (actual_making_amount != making_amount) {
@@ -174,41 +152,39 @@ public fun create_new<T: store>(
             EInvalidProof,
         );
 
-        let key = merkle_proof::compute_validation_key(
-            order_hash,
-            merkle_data.hashlock_info,
-        );
-
-        let validation_data = ValidationData {
-            index: merkle_data.secret_index + 1,
-            leaf: merkle_data.secret_hash,
-        };
-
-        table::add(&mut validation_registry.validations, key, validation_data);
-
         let parts_amount = extract_parts_amount(&merkle_data.hashlock_info);
         assert!(parts_amount > 1, EInvalidProof);
-        hashlock = validation_data.leaf;
+        hashlock = merkle_data.secret_hash;
         assert!(
             is_valid_partial_fill(
                 actual_making_amount,
                 remaining_making_amount,
                 making_amount,
                 parts_amount as u64,
-                validation_data.index as u64,
+                (merkle_data.secret_index + 1) as u64,
             ),
             EInvalidProof,
         );
     };
 
-    let mut immutables_modified = immutables;
-    immutables::set_hashlock(&mut immutables_modified, hashlock);
+    let mut immutables = immutables::new(
+        order_hash,
+        hashlock,
+        maker,
+        sender,
+        type_name,
+        actual_making_amount,
+        coin::value(&safety_deposit),
+        timelocks,
+    );
+
+    immutables::set_src_deployment_time(&mut immutables, ctx.epoch_timestamp_ms());
 
     let escrow_deposit = order::split_coins(order, actual_making_amount, ctx);
 
     let escrow = SrcEscrow<T> {
         id: object::new(ctx),
-        immutables: immutables_modified,
+        immutables,
         deposit: escrow_deposit,
         safety_deposit,
     };
@@ -234,7 +210,7 @@ public fun withdraw_to<T: store>(
     secret: vector<u8>,
     target: address,
     ctx: &mut TxContext,
-): Coin<SUI> {
+) {
     let current_time = ctx.epoch_timestamp_ms();
 
     // Check that caller is the taker
@@ -244,7 +220,7 @@ public fun withdraw_to<T: store>(
     assert!(current_time >= immutables::get_src_withdrawal_time(&escrow.immutables), EInvalidTime);
     assert!(current_time < immutables::get_src_cancellation_time(&escrow.immutables), EInvalidTime);
 
-    withdraw_to_internal(escrow, secret, target, ctx)
+    withdraw_to_internal(escrow, secret, target, ctx);
 }
 
 public fun public_withdraw<T: store>(
@@ -252,7 +228,7 @@ public fun public_withdraw<T: store>(
     registry: &ResolverRegistry,
     secret: vector<u8>,
     ctx: &mut TxContext,
-): Coin<SUI> {
+) {
     registry::assert_resolver(registry, ctx.sender().to_id());
 
     let current_time = ctx.epoch_timestamp_ms();
@@ -266,7 +242,7 @@ public fun public_withdraw<T: store>(
 
     // Withdraw to the taker's address
     let taker_address = immutables::get_taker(&escrow.immutables);
-    withdraw_to_internal(escrow, secret, taker_address, ctx)
+    withdraw_to_internal(escrow, secret, taker_address, ctx);
 }
 
 /// Cancel function for taker during private cancellation period
@@ -326,7 +302,7 @@ fun withdraw_to_internal<T: store>(
     secret: vector<u8>,
     target: address,
     ctx: &mut TxContext,
-): Coin<SUI> {
+) {
     let secret_hash = hash::keccak256(&secret);
     assert!(secret_hash == immutables::get_hashlock(&escrow.immutables), EInvalidSecret);
 
@@ -336,13 +312,12 @@ fun withdraw_to_internal<T: store>(
 
     let safety_amount = coin::value(&escrow.safety_deposit);
     let safety_deposit = coin::split(&mut escrow.safety_deposit, safety_amount, ctx);
+    transfer::public_transfer(safety_deposit, target);
 
     event::emit(EscrowWithdrawal {
         secret,
         escrow_id: object::uid_to_inner(&escrow.id),
     });
-
-    safety_deposit
 }
 
 /// Internal function to handle cancellation logic

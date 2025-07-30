@@ -36,13 +36,13 @@ public struct DstEscrowCancelledEvent has copy, drop {
 #[allow(lint(coin_field))]
 public struct DstEscrow<phantom T: store> has key {
     id: UID,
-    immutables: Immutables<T>,
+    immutables: Immutables,
     deposit: Coin<T>,
     safety_deposit: Coin<SUI>,
 }
 
 public fun create_new<T: store>(
-    immutables: Immutables<T>,
+    immutables: Immutables,
     src_cancellation_timestamp: u64,
     deposit: Coin<T>,
     safety_deposit: Coin<SUI>,
@@ -62,14 +62,22 @@ public fun create_new<T: store>(
     );
 
     let type_name = type_name::get<T>();
+    assert!(type_name == immutables::get_type_name(&immutables), EInvalidDeposit);
+
     let token_package_id = type_name::get_address(&type_name);
 
     let hashlock = immutables::get_hashlock(&immutables);
     let taker = ctx.sender();
 
+    let mut immutables_modified = immutables;
+    immutables::set_dst_deployment_time(
+        &mut immutables_modified,
+        ctx.epoch_timestamp_ms(),
+    );
+
     let escrow = DstEscrow<T> {
         id: object::new(ctx),
-        immutables,
+        immutables: immutables_modified,
         deposit,
         safety_deposit,
     };

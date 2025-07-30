@@ -5,22 +5,7 @@
 /// for ensuring order fill validity using full 32-byte merkle roots.
 module fusion_plus::merkle_proof;
 
-use std::bcs;
 use sui::hash;
-
-public struct ValidationKey has copy, drop {
-    order_hash: vector<u8>,
-    merkle_root: vector<u8>,
-}
-
-public fun compute_validation_key(order_hash: vector<u8>, merkle_root: vector<u8>): vector<u8> {
-    let data = ValidationKey {
-        order_hash: order_hash,
-        merkle_root: merkle_root,
-    };
-
-    hash::keccak256(&bcs::to_bytes(&data))
-}
 
 // Compute leaf hash: keccak256(abi.encodePacked(uint64(index), secretHash))
 public fun compute_leaf_hash(index: u16, secret_hash: vector<u8>): vector<u8> {
