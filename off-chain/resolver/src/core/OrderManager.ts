@@ -1,4 +1,5 @@
-import { Extension, HashLock } from '../../../../cross-chain-sdk/src';
+import { Address, Extension, HashLock, TakerTraits, AmountMode } from '../../../../cross-chain-sdk/src';
+import { EvmEscrowFactory } from '../../../../cross-chain-sdk/src/contracts';
 import { 
     EvmCrossChainOrder, 
     SvmCrossChainOrder 
@@ -9,6 +10,10 @@ import { EVMClient } from '../chains/evm/evm-client';
 import { SuiClient } from '../chains/sui/sui-client';
 import { RelayerRequestParams } from '../../../../cross-chain-sdk/src/api/relayer/types';
 import { ResolverWebSocketClient } from '../communication/ws';
+import { EscrowFactoryFacade } from '../../../../cross-chain-sdk/src/contracts/evm/escrow-factory-facade';
+import { DstImmutablesComplement } from '../../../../cross-chain-sdk/src/domains/immutables';
+import { ESCROW_FACTORY, ESCROW_DST_IMPLEMENTATION } from '../../../../cross-chain-sdk/src/deployments';
+import { NetworkEnum } from '../../../../cross-chain-sdk/src/chains';
 import { Hash } from 'crypto';
 
 // Order data stored in the mapping - includes original params + converted order + runtime data
@@ -171,23 +176,58 @@ export class OrderManager {
                 console.log(`Resolver ID: ${resolverId}`);
                 
                 let hashLock: HashLock;
-                
+                let takerTraits: TakerTraits;
+
                 if (storedOrder.isPartialFill && originalParams.secretHashes && originalParams.secretHashes.length > 1) {
-                    // Partial fills
+                    // Multiple fills (partial fills) - check if this resolver should handle this order
+                    if (resolverId > originalParams.secretHashes.length) {
+                        console.log(`Resolver ID ${resolverId} exceeds available secret hashes (${originalParams.secretHashes.length}). Skipping order execution.`);
+                        return;
+                    }
                     
-                    console.log(`Partial fill detected with ${originalParams.secretHashes.length} secret hashes`);
+                    console.log(`Multiple fills detected with ${originalParams.secretHashes.length} secret hashes`);
                     
-                    // Convert secret hashes to merkle leaves for multiple fills
-                    const merkleLeaves = HashLock.getMerkleLeavesFromSecretHashes(originalParams.secretHashes);
-                    hashLock = HashLock.forMultipleFills(merkleLeaves);
+                    // Calculate index based on resolver ID (0-indexed, so resolverId - 1)
+                    const idx = resolverId - 1;
                     
-                    console.log(`Created hashlock for partial fills with ${merkleLeaves.length} leaves`);
+                    // Get secrets and create merkle leaves from secret hashes
+                    const secretHashes = originalParams.secretHashes;
+                    const merkleLeaves = HashLock.getMerkleLeavesFromSecretHashes(secretHashes);
+                    
+                    // Get proof for this specific index
+                    const proof = HashLock.getProof(merkleLeaves, idx);
+                    
+                    // Use the specific secret hash for this resolver
+                    const specificSecretHash = secretHashes[idx];
+                    hashLock = HashLock.fromString(specificSecretHash);
+                    
+                    // Create EscrowFactory instance with the factory address from config
+                    const escrowFactoryAddress = EvmAddress.fromString(this.evmClient.getEscrowFactoryAddress());
+                    const escrowFactory = new EvmEscrowFactory(escrowFactoryAddress);
+                    
+                    // Build TakerTraits with the multiple fill interaction
+                    takerTraits = TakerTraits.default()
+                        .setExtension(crossChainOrder.extension)
+                        .setInteraction(
+                            escrowFactory.getMultipleFillInteraction(
+                                proof,
+                                idx,
+                                specificSecretHash
+                            )
+                        )
+                        .setAmountMode(AmountMode.maker)
+                        .setAmountThreshold(crossChainOrder.takingAmount);
+                    
+                    console.log(`Created TakerTraits for multiple fills with index ${idx}, secret hash: ${specificSecretHash.substring(0, 10)}...`);
+                    
                 } else {
                     // Single fill - check if this resolver should handle it (only resolver ID 1)
                     if (resolverId !== 1) {
                         console.log(`Single fill order but resolver ID is ${resolverId}. Only resolver ID 1 handles single fills. Skipping order execution.`);
                         return;
                     }
+                    
+                    console.log(`Single fill detected`);
                     
                     // Single fill - use the first (and only) secret hash
                     const secretHash = originalParams.secretHashes?.[0];
@@ -196,10 +236,17 @@ export class OrderManager {
                     }
                     
                     hashLock = HashLock.forSingleFill(secretHash);
-                    console.log(`Created hashlock for single fill`);
+                    
+                    // Build TakerTraits for single fill (no interaction needed)
+                    takerTraits = TakerTraits.default()
+                        .setExtension(crossChainOrder.extension)
+                        .setAmountMode(AmountMode.maker)
+                        .setAmountThreshold(crossChainOrder.takingAmount);
+                    
+                    console.log(`Created TakerTraits for single fill with secret hash: ${secretHash.substring(0, 10)}...`);
                 }
                 
-                srcResult = await this.evmClient.createSrcEscrow(srcChainId, crossChainOrder, hashLock, signature, fillAmount);
+                srcResult = await this.evmClient.createSrcEscrow(srcChainId, crossChainOrder, hashLock, signature, fillAmount, takerTraits);
                 console.log(`EVM source escrow deployed - TxHash: ${srcResult.txHash}`);
                 
                 // Get source complement from factory event
@@ -212,17 +259,44 @@ export class OrderManager {
                 const resolverId = this.getResolverId();
                 console.log(`Resolver ID: ${resolverId}`);
                 
-                let hashLock: HashLock;
+                let hashLock: any; // Modified to handle both scenarios
 
                 if (storedOrder.isPartialFill && originalParams.secretHashes && originalParams.secretHashes.length > 1) {
+                    // Multiple fills (partial fills) - check if this resolver should handle this order
+                    if (resolverId > originalParams.secretHashes.length) {
+                        console.log(`Resolver ID ${resolverId} exceeds available secret hashes (${originalParams.secretHashes.length}). Skipping order execution.`);
+                        return;
+                    }
 
                     console.log(`Partial fill detected with ${originalParams.secretHashes.length} secret hashes`);
                     
-                    // Convert secret hashes to merkle leaves for multiple fills
-                    const merkleLeaves = HashLock.getMerkleLeavesFromSecretHashes(originalParams.secretHashes);
-                    hashLock = HashLock.forMultipleFills(merkleLeaves);
+                    // Calculate index based on resolver ID (0-indexed, so resolverId - 1)
+                    const idx = resolverId - 1;
                     
-                    console.log(`Created hashlock for partial fills with ${merkleLeaves.length} leaves`);
+                    // Get secrets and create merkle leaves from secret hashes
+                    const secretHashes = originalParams.secretHashes;
+                    const merkleLeaves = HashLock.getMerkleLeavesFromSecretHashes(secretHashes);
+                    
+                    // Get proof for this specific index
+                    const proof = HashLock.getProof(merkleLeaves, idx);
+                    
+                    // Use the specific secret hash for this resolver
+                    const specificSecretHash = secretHashes[idx];
+                    
+                    // Convert secret hashes to merkle leaves for multiple fills
+                    const hashlockForMultipleFills = HashLock.forMultipleFills(merkleLeaves);
+                    
+                    // Create enhanced hashlock object with all necessary information
+                    hashLock = {
+                        ...hashlockForMultipleFills,
+                        secretHash: Buffer.from(specificSecretHash.replace('0x', ''), 'hex'),
+                        secretIndex: idx,
+                        proof: proof,
+                        isMultipleFills: () => true,
+                        toBuffer: () => hashlockForMultipleFills.toBuffer()
+                    };
+                    
+                    console.log(`Created hashlock for partial fills with ${merkleLeaves.length} leaves, index ${idx}, secret hash: ${specificSecretHash.substring(0, 10)}...`);
                 } else {
                     // Single fill - check if this resolver should handle it (only resolver ID 1)
                     if (resolverId !== 1) {
@@ -236,15 +310,33 @@ export class OrderManager {
                         throw new Error('No secret hash available for single fill order');
                     }
 
-                    hashLock = HashLock.forSingleFill(secretHash);
+                    const singleFillHashLock = HashLock.fromString(secretHash);
+                    
+                    // Create enhanced hashlock object for single fill
+                    hashLock = {
+                        ...singleFillHashLock,
+                        secretHash: Buffer.from(secretHash.replace('0x', ''), 'hex'),
+                        secretIndex: 0,
+                        proof: [],
+                        isMultipleFills: () => false,
+                        toBuffer: () => Buffer.from(secretHash.replace('0x', ''), 'hex')
+                    };
+                    
                     console.log(`Created hashlock for single fill`);
                 }
                 
-                srcResult = await this.suiClient.createSrcEscrow(srcChainId, crossChainOrder, hashLock, signature, fillAmount);
+                // Create a minimal order object for Sui deployment
+                const suiOrder = {
+                    orderId: crossChainOrder.getOrderHash(srcChainId), // Use order hash as ID for now
+                    id: crossChainOrder.getOrderHash(srcChainId),
+                    coinType: '0x2::sui::SUI' // Default to SUI, should be derived from crossChainOrder.makerAsset
+                };
+                
+                srcResult = await this.suiClient.createSrcEscrow(srcChainId, suiOrder, hashLock, signature, fillAmount);
                 console.log(`Sui source escrow deployed - TxHash: ${srcResult.txHash}`);
                 
-                // TODO: Get source complement from Sui factory event
-                // storedOrder.srcComplement = await this.suiClient.getSrcComplement(srcResult.blockHash);
+                // Get source complement from Sui factory event
+                storedOrder.srcComplement = await this.suiClient.getSrcComplement(srcResult.blockHash);
             }
 
             // Step 2: Wait for source chain finality lock
@@ -266,9 +358,43 @@ export class OrderManager {
                 // EVM -> Sui: Build destination immutables from stored data
                 console.log(`Using Sui client for destination deployment`);
                 
-                // TODO: Update SuiClient to accept dstImmutables parameter
-                // dstResult = await this.suiClient.createDstEscrow();
-                console.log(`Sui destination escrow deployed`);
+                if (!storedOrder.srcComplement) {
+                    throw new Error('Source complement not available from source deployment');
+                }
+                
+                // Extract parameters for Sui destination escrow creation
+                const orderHashBytes = new Uint8Array(Buffer.from(orderHash.slice(2), 'hex')); 
+                
+                // Get hashlock from cross-chain order
+                const hashlockBytes = crossChainOrder.escrowExtension.hashLockInfo.toBuffer();
+                
+                // Extract addresses
+                const makerAddress = originalParams.order.maker;
+                const takerAddress = this.suiClient.getAddress();
+                
+                // Extract amounts from cross-chain order
+                const depositAmount = crossChainOrder.takingAmount; // Amount to deposit on destination
+                const safetyDepositAmount = crossChainOrder.escrowExtension.dstSafetyDeposit;
+                
+                // Get destination token type (for Sui, this would be the coin type)
+                const dstToken = crossChainOrder.takerAsset;
+                // TODO: Convert EVM address to Sui coin type properly
+                const coinType = '0x2::sui::SUI'; // Default to SUI for now, should be mapped from dstToken
+                
+                console.log(`[${dstChainId}] Depositing ${depositAmount} for order ${orderHash}`);
+                
+                // Call Sui destination escrow creation following the same pattern as test scripts
+                dstResult = await this.suiClient.createDstEscrow(
+                    orderHashBytes,
+                    hashlockBytes, 
+                    makerAddress,
+                    takerAddress,
+                    depositAmount,
+                    safetyDepositAmount,
+                    coinType
+                );
+                
+                console.log(`Sui destination escrow deployed - TxHash: ${dstResult.txHash}`);
                 
                 // Store destination deployment timestamp
                 storedOrder.dstDeployedAt = BigInt(Math.floor(Date.now() / 1000));
@@ -276,18 +402,24 @@ export class OrderManager {
                 // Sui -> EVM: Build destination immutables from stored data
                 console.log(`Using EVM client for destination deployment`);
                 
-                // Derive destination immutables from source immutables and complement
+                if (!storedOrder.srcComplement) {
+                    throw new Error('Source complement not available from source deployment');
+                }
+                
+                // Get source immutables and build destination immutables following test script pattern
                 const srcImmutables = this.getSrcImmutables(storedOrder, fromEVM);
                 const dstImmutables = srcImmutables
                     .withComplement(storedOrder.srcComplement)
                     .withTaker(EvmAddress.fromString(this.evmClient.getAddress()));
                 
-                dstResult = await this.evmClient.createDstEscrow(dstImmutables);
-                // const dstHash = dstResult.txHash;
-            
-                console.log(`EVM destination escrow deployed`);
+                console.log(`[${dstChainId}] Depositing ${dstImmutables.amount} for order ${orderHash}`);
                 
-                // Store destination deployment timestamp
+                // Deploy destination escrow using the same pattern as test scripts
+                dstResult = await this.evmClient.createDstEscrow(dstImmutables);
+                
+                console.log(`EVM destination escrow deployed - TxHash: ${dstResult.txHash}`);
+                
+                // Store destination deployment timestamp from block timestamp
                 storedOrder.dstDeployedAt = BigInt(Math.floor(Date.now() / 1000));
             }
 
@@ -354,73 +486,176 @@ export class OrderManager {
      * Handle secret reveal from maker
      * Processes secrets for both single and partial fill orders with resolver ID validation
      */
-    public handleSecretReveal(secretData: SecretData): void {
-        console.log(`Secret revealed for order ${secretData.orderHash}`);
-        console.log(`Secret: ${secretData.secret}`);
-        
-        // Get stored order data to determine fill type
-        const storedOrder = this.orders.get(secretData.orderHash);
-        if (!storedOrder) {
-            console.warn(`Order not found for hash: ${secretData.orderHash}. Ignoring secret reveal.`);
-            return;
-        }
-        
-        // Get resolver ID from environment (1-indexed)
-        const resolverId = this.getResolverId();
-        console.log(`Processing secret reveal for resolver ID: ${resolverId}`);
-        
-        if (storedOrder.isPartialFill && storedOrder.originalParams.secretHashes && storedOrder.originalParams.secretHashes.length > 1) {
-            // Partial fill case
-            console.log(`Partial fill order detected with ${storedOrder.originalParams.secretHashes.length} secret hashes`);
+    public async handleSecretReveal(secretData: SecretData): Promise<void> {
+        try {
+            console.log(`Secret revealed for order ${secretData.orderHash}`);
+            console.log(`Secret: ${secretData.secret}`);
             
-            // Check if this resolver should handle any part of this order
-            if (resolverId > storedOrder.originalParams.secretHashes.length) {
-                console.log(`Resolver ID ${resolverId} exceeds available secret hashes (${storedOrder.originalParams.secretHashes.length}). Ignoring secret reveal.`);
+            // Get stored order data to determine fill type
+            const storedOrder = this.orders.get(secretData.orderHash);
+            if (!storedOrder) {
+                console.warn(`Order not found for hash: ${secretData.orderHash}. Ignoring secret reveal.`);
                 return;
             }
             
-            // TODO: Implement partial fill secret matching logic
-            // For now, we'll validate that the revealed secret matches one of the expected secret hashes
-            const revealedSecretHash = HashLock.hashSecret(secretData.secret);
-            const expectedSecretHashes = storedOrder.originalParams.secretHashes;
+            // Get resolver ID from environment (1-indexed)
+            const resolverId = this.getResolverId();
+            console.log(`Processing secret reveal for resolver ID: ${resolverId}`);
             
-            const matchingIndex = expectedSecretHashes.findIndex(hash => hash === revealedSecretHash);
-            if (matchingIndex === -1) {
-                console.log(`Revealed secret does not match any expected secret hash. Ignoring.`);
-                return;
-            }
-            
-            console.log(`Secret matches expected hash at index ${matchingIndex}`);
-            
-            // TODO: Check if this specific resolver instance should handle this secret
-            // Placeholder: For now, log that this is a partial fill secret reveal
-            console.log(`[PARTIAL FILL] Secret revealed for resolver ID ${resolverId}, secret index ${matchingIndex}`);
-            console.log(`[PLACEHOLDER] Implement resolver-specific partial fill logic here`);
-            
-        } else {
-            // Single fill case
-            if (resolverId !== 1) {
-                console.log(`Single fill order but resolver ID is ${resolverId}. Only resolver ID 1 handles single fills. Ignoring secret reveal.`);
-                return;
-            }
-            
-            console.log(`[SINGLE FILL] Secret revealed for resolver ID 1`);
-            console.log(`Secret will be used for withdrawal from escrow`);
-            
-            // Validate the secret matches the expected hash
-            const expectedSecretHash = storedOrder.originalParams.secretHashes?.[0];
-            if (expectedSecretHash) {
-                const revealedSecretHash = HashLock.hashSecret(secretData.secret);
-                if (revealedSecretHash !== expectedSecretHash) {
-                    console.warn(`Revealed secret hash does not match expected hash. Ignoring.`);
+            if (storedOrder.isPartialFill && storedOrder.originalParams.secretHashes && storedOrder.originalParams.secretHashes.length > 1) {
+                // Partial fill case
+                console.log(`Partial fill order detected with ${storedOrder.originalParams.secretHashes.length} secret hashes`);
+                
+                // Check if this resolver should handle any part of this order
+                if (resolverId > storedOrder.originalParams.secretHashes.length) {
+                    console.log(`Resolver ID ${resolverId} exceeds available secret hashes (${storedOrder.originalParams.secretHashes.length}). Ignoring secret reveal.`);
                     return;
                 }
+                
+                // For multiple fills, check if the secret matches our specific secret hash
+                const idx = resolverId - 1; // Convert to 0-based index
+                const specificSecretHash = storedOrder.originalParams.secretHashes[idx];
+                
+                // Validate that the received secret matches our assigned secret hash
+                const receivedSecretHash = HashLock.hashSecret(secretData.secret);
+                if (receivedSecretHash !== specificSecretHash) {
+                    console.log(`Secret does not match assigned hash for resolver ID ${resolverId}. Ignoring secret reveal.`);
+                    return;
+                }
+                
+                console.log(`✅ Secret validated for multiple fill, resolver ID ${resolverId}`);
+                
+                // Trigger withdrawal for the appropriate chain
+                await this.triggerWithdrawal(storedOrder, secretData.secret);
+                
+            } else {
+                // Single fill case
+                if (resolverId !== 1) {
+                    console.log(`Single fill order but resolver ID is ${resolverId}. Only resolver ID 1 handles single fills. Ignoring secret reveal.`);
+                    return;
+                }
+                
+                console.log(`[SINGLE FILL] Secret revealed for resolver ID 1`);
+                
+                // Validate the secret matches the expected hash
+                const expectedSecretHash = storedOrder.originalParams.secretHashes?.[0];
+                if (expectedSecretHash) {
+                    const revealedSecretHash = HashLock.hashSecret(secretData.secret);
+                    if (revealedSecretHash !== expectedSecretHash) {
+                        console.warn(`Revealed secret hash does not match expected hash. Ignoring.`);
+                        return;
+                    }
+                }
+                
+                console.log(`✅ Secret validated for single fill`);
+                
+                // Trigger withdrawal for the appropriate chain
+                await this.triggerWithdrawal(storedOrder, secretData.secret);
             }
+            
+        } catch (error) {
+            console.error('Error handling secret reveal:', error);
         }
-        
-        // TODO: Store secret and trigger withdrawal process
-        // This will later call orderManager.withdrawFromEscrow()
-        console.log(`Secret validation completed. Ready for withdrawal process.`);
+    }
+
+    /**
+     * Trigger withdrawal from escrow based on stored order data
+     */
+    private async triggerWithdrawal(storedOrder: StoredOrderData, secret: string): Promise<void> {
+        try {
+            const { originalParams } = storedOrder;
+            const dstChainId = storedOrder.crossChainOrder.dstChainId;
+            
+            console.log(`Triggering withdrawal on chain ${dstChainId}`);
+
+            // Determine destination chain type
+            const isDstEVM = this.isEVMChain(dstChainId);
+            
+            if (isDstEVM) {
+                // For EVM chains, calculate escrow address and call withdrawFromEscrow
+                const evmClient = this.evmClient; // We have single EVM client for now
+                
+                // Get destination immutables for address calculation
+                const dstImmutables = this.getDstImmutables(storedOrder, !this.isEVMChain(originalParams.srcChainId));
+                
+                // Calculate destination escrow address using EscrowFactoryFacade
+                const escrowAddress = await this.calculateDstEscrowAddress(
+                    dstChainId,
+                    storedOrder,
+                    dstImmutables
+                );
+
+                if (!escrowAddress) {
+                    console.error('Failed to calculate destination escrow address');
+                    return;
+                }
+
+                console.log(`Withdrawing from EVM escrow at address: ${escrowAddress}`);
+                const result = await evmClient.withdrawFromEscrow(escrowAddress, secret, dstImmutables);
+                console.log(`EVM withdrawal successful:`, result);
+
+            } else {
+                // For Sui chains, use escrow ID from stored data (if available)
+                // For now, we don't have Sui withdrawal implemented
+                console.log('Sui withdrawal - TODO: Implement withdrawal call');
+            }
+
+        } catch (error) {
+            console.error('Error triggering withdrawal:', error);
+        }
+    }
+
+    /**
+     * Calculate destination escrow address for EVM chains
+     */
+    private async calculateDstEscrowAddress(
+        chainId: number,
+        storedOrder: StoredOrderData,
+        dstImmutables: any
+    ): Promise<string | null> {
+        try {
+            // Get source immutables
+            const srcImmutables = this.getSrcImmutables(storedOrder, !this.isEVMChain(storedOrder.originalParams.srcChainId));
+
+            // Get factory address for the destination chain
+            const factoryAddress = ESCROW_FACTORY[chainId as keyof typeof ESCROW_FACTORY];
+            const implementationAddress = ESCROW_DST_IMPLEMENTATION[chainId as keyof typeof ESCROW_DST_IMPLEMENTATION];
+
+            if (!factoryAddress || !implementationAddress) {
+                console.error(`No factory or implementation address found for chain ID ${chainId}`);
+                return null;
+            }
+
+            // Create escrow factory facade - chainId values should match NetworkEnum
+            const factory = new EscrowFactoryFacade(chainId, factoryAddress);
+
+            // Create destination immutables complement
+            const complement = DstImmutablesComplement.new({
+                maker: dstImmutables.maker,
+                amount: dstImmutables.amount,
+                token: dstImmutables.token,
+                taker: dstImmutables.taker,
+                safetyDeposit: dstImmutables.safetyDeposit
+            });
+
+            // Get deployment timestamp (if available from stored data)
+            const deployedAt = storedOrder.dstDeployedAt || BigInt(Math.floor(Date.now() / 1000));
+
+            // Calculate destination escrow address
+            const escrowAddress = factory.getDstEscrowAddress(
+                srcImmutables,
+                complement,
+                deployedAt,
+                dstImmutables.taker,
+                implementationAddress
+            );
+
+            return escrowAddress.toString();
+
+        } catch (error) {
+            console.error('Error calculating destination escrow address:', error);
+            return null;
+        }
     }
 
     /**

@@ -29,10 +29,13 @@ export class Resolver {
         });
         
         this.suiClient = new SuiClient({
-            network: 'testnet', 
+            network: 'testnet',
+            rpcUrl: chainConfig.suiRpcUrl || 'https://fullnode.testnet.sui.io',
             privateKey: process.env.SUI_PRIVATE_KEY || '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-            relayerPackageId: chainConfig.suiResolverPackage || '0x0000000000000000000000000000000000000000',
-            escrowFactoryAddress: process.env.SUI_ESCROW_FACTORY || '0x0000000000000000000000000000000000000000',
+            packageId: chainConfig.suiResolverPackage || '0x0000000000000000000000000000000000000000000000000000000000000000',
+            registryObjectId: process.env.SUI_REGISTRY_OBJECT_ID || '0x0000000000000000000000000000000000000000000000000000000000000000',
+            relayerPackageId: chainConfig.suiResolverPackage || '0x0000000000000000000000000000000000000000000000000000000000000000',
+            escrowFactoryAddress: process.env.SUI_ESCROW_FACTORY || '0x0000000000000000000000000000000000000000000000000000000000000000',
             gasBudget: 10000000
         });
         
@@ -112,7 +115,6 @@ export class Resolver {
         return {
             running: this.isRunning,
             wsConnected: this.wsClient.isReady(),
-            ordersCount: this.orderManager.getOrderCount(),
             resolverId: this.configManager.getWebSocketConfig().resolverId,
         };
     }

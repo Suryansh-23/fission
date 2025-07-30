@@ -35,14 +35,10 @@ export class EVMClient  {
         order: EvmCrossChainOrder, 
         hashLock: HashLock, // Different for Full fill and Partial fill
         signature: string,
-        fillAmount: bigint // order.makingAmount
+        fillAmount: bigint, // order.makingAmount
+        takerTraits: TakerTraits
     ): Promise<{ txHash: string; blockHash: string }> {
         try {
-            // Build taker traits for the order execution
-            const takerTraits = TakerTraits.default()
-                .setExtension(order.extension)
-                .setAmountMode(AmountMode.maker)
-                .setAmountThreshold(order.takingAmount);
 
             // Get hash lock from order
             // TODO: change this hash lock for SingleFill and PartialFill forMultipleFills
@@ -273,6 +269,10 @@ export class EVMClient  {
 
     getAddress(): string {
         return this.signer.address;
+    }
+
+    getEscrowFactoryAddress(): string {
+        return this.config.escrowFactoryAddress;
     }
 
     async isHealthy(): Promise<boolean> {

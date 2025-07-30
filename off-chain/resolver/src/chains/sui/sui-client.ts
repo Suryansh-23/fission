@@ -6,6 +6,8 @@ import { Transaction } from '@mysten/sui/transactions';
 import { SuiCoinHelper } from '../helper/coin-sui';
 import { SuiImmutablesHelper, DstTimelocks, ImmutablesData } from '../helper/immutables-sui';
 import { SuiDstEscrowHelper, CreateDstEscrowParams } from './dst-escrow';
+import { CreateSrcEscrowParams, MerkleProofData, SignatureData } from './src-escrow';
+import { SuiOrderHelper, CreateOrderParams } from '../helper/order-sui';
 import { SuiResolverRegistry } from '../helper/resolver-registry-sui';
 
 export interface SuiEscrowInfo {
@@ -25,6 +27,7 @@ export class SuiClient {
     private coinHelper: SuiCoinHelper;
     private immutablesHelper: SuiImmutablesHelper;
     private dstEscrowHelper: SuiDstEscrowHelper;
+    private orderHelper: SuiOrderHelper;
     private registryHelper: SuiResolverRegistry;
     private resolverCapId?: string; // Store the resolver capability ID
 
@@ -46,6 +49,7 @@ export class SuiClient {
         this.coinHelper = new SuiCoinHelper(this.client, this.keypair);
         this.immutablesHelper = new SuiImmutablesHelper(this.client, this.keypair, config.packageId);
         this.dstEscrowHelper = new SuiDstEscrowHelper(this.client, this.keypair, config.packageId);
+        this.orderHelper = new SuiOrderHelper(this.client, this.keypair, config.packageId);
         this.registryHelper = new SuiResolverRegistry(
             this.client, 
             this.keypair, 
@@ -77,6 +81,124 @@ export class SuiClient {
         return this.resolverCapId;
     }
     
+    /**
+     * Get the order helper for creating and managing orders
+     */
+    getOrderHelper(): SuiOrderHelper {
+        return this.orderHelper;
+    }
+
+    /**
+     * Get the destination escrow helper
+     */
+    getDstEscrowHelper(): SuiDstEscrowHelper {
+        return this.dstEscrowHelper;
+    }
+
+    /**
+     * Deploy source escrow using the resolver Move contract
+     * Maps to the resolver::create_src_escrow Move function
+     */
+    async deploySrcEscrow(
+        orderId: string,
+        depositAmount: bigint,
+        safetyDepositAmount: bigint,
+        signature: Uint8Array,
+        publicKey: Uint8Array,
+        scheme: number, // 0=Ed25519, 1=ECDSA-K1, 2=ECDSA-R1
+        hashlockInfo: Uint8Array,
+        secretHash: Uint8Array,
+        secretIndex: number,
+        proof: Uint8Array[],
+        coinType: string,
+        srcWithdrawalTimestamp: bigint,
+        srcPublicWithdrawalTimestamp: bigint,
+        srcCancellationTimestamp: bigint,
+        srcPublicCancellationTimestamp: bigint
+    ): Promise<{ txHash: string; blockHash: string; escrowId?: string }> {
+        try {
+            console.log('Deploying source escrow using resolver contract');
+
+            const tx = new Transaction();
+
+            // Prepare safety deposit (always SUI)
+            const [safetyDepositCoin] = tx.splitCoins(tx.gas, [safetyDepositAmount]);
+
+            // Call the resolver::create_src_escrow function
+            tx.moveCall({
+                target: `${this.config.packageId}::resolver::create_src_escrow`,
+                typeArguments: [coinType],
+                arguments: [
+                    // _cap: &ResolverCap
+                    tx.object(this.getResolverCapId()),
+                    // order: &mut Order<T>
+                    tx.object(orderId),
+                    // deposit_amount: u64
+                    tx.pure.u64(depositAmount.toString()),
+                    // safety_deposit: Coin<SUI>
+                    safetyDepositCoin,
+                    // signature: vector<u8>
+                    tx.pure.vector('u8', Array.from(signature)),
+                    // pk: vector<u8>
+                    tx.pure.vector('u8', Array.from(publicKey)),
+                    // scheme: u8
+                    tx.pure.u8(scheme),
+                    // hashlock_info: vector<u8>
+                    tx.pure.vector('u8', Array.from(hashlockInfo)),
+                    // secret_hash: vector<u8>
+                    tx.pure.vector('u8', Array.from(secretHash)),
+                    // secret_index: u16
+                    tx.pure.u16(secretIndex),
+                    // proof: vector<vector<u8>>
+                    tx.pure.vector('vector<u8>', proof.map(p => Array.from(p))),
+                    // src_withdrawal_timestamp: u64
+                    tx.pure.u64(srcWithdrawalTimestamp.toString()),
+                    // src_public_withdrawal_timestamp: u64
+                    tx.pure.u64(srcPublicWithdrawalTimestamp.toString()),
+                    // src_cancellation_timestamp: u64
+                    tx.pure.u64(srcCancellationTimestamp.toString()),
+                    // src_public_cancellation_timestamp: u64
+                    tx.pure.u64(srcPublicCancellationTimestamp.toString()),
+                ],
+            });
+
+            // Execute transaction
+            const result = await this.client.signAndExecuteTransaction({
+                transaction: tx,
+                signer: this.keypair,
+                options: {
+                    showEvents: true,
+                    showEffects: true,
+                    showObjectChanges: true,
+                },
+            });
+
+            console.log(`Sui source escrow deployed via resolver - TxHash: ${result.digest}`);
+
+            // Extract escrow ID from events if available
+            let escrowId: string | undefined;
+            if (result.events) {
+                for (const event of result.events) {
+                    if (event.type.includes('::src_escrow::SrcEscrowCreated')) {
+                        const parsedJson = event.parsedJson as any;
+                        escrowId = parsedJson.id;
+                        break;
+                    }
+                }
+            }
+
+            return {
+                txHash: result.digest,
+                blockHash: result.checkpoint || result.digest,
+                escrowId,
+            };
+
+        } catch (error) {
+            console.error('Error deploying source escrow via resolver:', error);
+            throw error;
+        }
+    }
+
     async createSrcEscrow(
         chainId: number, 
         order: any, 
@@ -84,8 +206,115 @@ export class SuiClient {
         signature: string, 
         fillAmount: bigint
     ): Promise<{ txHash: string; blockHash: string }> {
-        // TODO: Implement Sui source escrow deployment
-        throw new Error("Sui createSrcEscrow not implemented yet - requires src_escrow Move contract");
+        try {
+            console.log('Creating source escrow on Sui chain using resolver contract');
+
+            // Extract order details
+            const orderId = order.orderId || order.id;
+            if (!orderId) {
+                throw new Error('Order ID is required for source escrow creation');
+            }
+
+            // Parse signature data (assuming Ed25519 for now)
+            const signatureBytes = typeof signature === 'string' 
+                ? new Uint8Array(Buffer.from(signature.replace('0x', ''), 'hex'))
+                : new Uint8Array(signature);
+            
+            // Extract public key from keypair 
+            const publicKeyBytes = this.keypair.getPublicKey().toRawBytes();
+
+            // Set up timelocks 
+            const now = this.immutablesHelper.getCurrentTimestamp();
+            const hour = BigInt(60 * 60 * 1000);
+            const day = BigInt(24) * hour;
+
+            // Handle both single fill and multiple fill scenarios
+            let hashlockInfo: Uint8Array;
+            let secretHash: Uint8Array;
+            let secretIndex: number = 0;
+            let proof: Uint8Array[] = [];
+
+            if (hashLock.isMultipleFills && hashLock.isMultipleFills()) {
+                // Multiple fills scenario
+                console.log('Handling multiple fills scenario');
+                
+                // For multiple fills, use the hashlock info directly
+                hashlockInfo = new Uint8Array(hashLock.toBuffer());
+                
+                // For multiple fills, we need the specific secret hash for this resolver
+                // This should be provided in the hashLock object
+                if (hashLock.secretHash) {
+                    secretHash = new Uint8Array(hashLock.secretHash);
+                } else {
+                    throw new Error('Secret hash required for multiple fills');
+                }
+
+                // Get secret index and proof if available
+                if (hashLock.secretIndex !== undefined) {
+                    secretIndex = hashLock.secretIndex;
+                }
+                
+                if (hashLock.proof && Array.isArray(hashLock.proof)) {
+                    proof = hashLock.proof.map((p: any) => new Uint8Array(p));
+                }
+                
+            } else {
+                // Single fill scenario
+                console.log('Handling single fill scenario');
+                
+                // For single fill, the hashlock info is the secret hash itself
+                const secretHashBytes = hashLock.secretHash || hashLock.toBuffer();
+                hashlockInfo = new Uint8Array(secretHashBytes);
+                secretHash = new Uint8Array(secretHashBytes);
+                secretIndex = 0;
+                proof = []; // No proof needed for single fill
+            }
+
+            const result = await this.deploySrcEscrow(
+                orderId,
+                fillAmount,
+                BigInt(1000000), // 0.001 SUI safety deposit
+                signatureBytes,
+                publicKeyBytes,
+                0, // Ed25519 scheme
+                hashlockInfo,
+                secretHash,
+                secretIndex,
+                proof,
+                order.coinType || '0x2::sui::SUI',
+                now + hour, // 1 hour for private withdrawal
+                now + (2n * hour), // 2 hours for public withdrawal
+                now + day, // 1 day for private cancellation
+                now + (2n * day) // 2 days for public cancellation
+            );
+
+            return {
+                txHash: result.txHash,
+                blockHash: result.blockHash,
+            };
+
+        } catch (error) {
+            console.error('Error creating source escrow:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get source complement from Sui transaction (placeholder implementation)
+     * TODO: Implement proper source complement extraction from Sui events
+     */
+    async getSrcComplement(blockHash: string): Promise<any> {
+        console.log(`Getting source complement from Sui transaction: ${blockHash}`);
+        
+        // For now, return a placeholder complement
+        // In a real implementation, this would parse the transaction events
+        // to extract the source complement data
+        return {
+            // Placeholder complement data
+            // This should be extracted from the SrcEscrowCreated event
+            placeholder: true,
+            blockHash: blockHash
+        };
     }
 
     /**
