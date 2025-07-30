@@ -1,5 +1,6 @@
 module fusion_plus::src_escrow;
 
+use fusion_plus::auction_calculator::{Self};
 use fusion_plus::immutables::{Self, Immutables, Timelocks};
 use fusion_plus::merkle_proof;
 use fusion_plus::order::{Self, Order};
@@ -126,17 +127,27 @@ public fun create_new<T: store>(
 
     let type_name = type_name::get<T>();
     let maker = order::get_maker(order);
-    let making_amount = order::get_making_amount(order);
+    let order_making_amount = order::get_making_amount(order);
+    let order_taking_amount = order::get_taking_amount(order);
     let remaining_making_amount = order::get_remaining_amount(order);
     let is_partial_fill_allowed = order::is_partial_fill_allowed(order);
     let is_multiple_fills_allowed = order::is_multiple_fills_allowed(order);
 
     let actual_making_amount = deposit_amount;
-    let actual_taking_amount = order::get_taking_amount(order);
 
-    if (actual_making_amount != making_amount) {
+    if (actual_making_amount != order_making_amount) {
         assert!(is_partial_fill_allowed, EPartialFillsNotAllowed);
     };
+
+    let auction_details = order::get_auction_details(order);
+
+    let taking_amount = auction_calculator::get_taking_amount(
+        order_making_amount,
+        order_taking_amount,
+        actual_making_amount,
+        auction_details,
+        ctx.epoch_timestamp_ms(),
+    );
 
     let mut hashlock = merkle_data.hashlock_info;
 
@@ -159,7 +170,7 @@ public fun create_new<T: store>(
             is_valid_partial_fill(
                 actual_making_amount,
                 remaining_making_amount,
-                making_amount,
+                order_making_amount,
                 parts_amount as u64,
                 (merkle_data.secret_index + 1) as u64,
             ),
@@ -198,7 +209,7 @@ public fun create_new<T: store>(
         maker,
         taker: sender,
         making_amount: actual_making_amount,
-        taking_amount: actual_taking_amount,
+        taking_amount: taking_amount,
     });
 
     transfer::share_object(escrow);

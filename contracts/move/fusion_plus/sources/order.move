@@ -1,5 +1,6 @@
 module fusion_plus::order;
 
+use fusion_plus::auction_calculator::{Self, AuctionDetails};
 use sui::coin::{Self, Coin};
 use sui::event;
 use sui::hash;
@@ -24,7 +25,7 @@ public struct Order<phantom T: store> has key {
     is_multiple_fills_allowed: bool,
     remaining_coins: Coin<T>,
     filled_amount: u64,
-    merkle_root: Option<vector<u8>>, // For multiple fills
+    auction_details: AuctionDetails,
 }
 
 public struct OrderHashData has copy, drop {
@@ -57,8 +58,11 @@ public entry fun create_order<T: store>(
     salt: vector<u8>,
     is_partial_fill_allowed: bool,
     is_multiple_fills_allowed: bool,
-    merkle_root: Option<vector<u8>>,
     deposit: Coin<T>,
+    start_time: u64,
+    duration: u64,
+    initial_rate_bump: u64,
+    points_and_time_deltas: vector<u8>,
     ctx: &mut TxContext,
 ) {
     assert!(coin::value(&deposit) == making_amount, EInvalidMakingAmount);
@@ -72,6 +76,13 @@ public entry fun create_order<T: store>(
     };
 
     let order_hash = hash::keccak256(&sui::bcs::to_bytes(&data));
+
+    let auction_details = auction_calculator::new(
+        start_time,
+        duration,
+        initial_rate_bump,
+        points_and_time_deltas,
+    );
 
     let order = Order<T> {
         id: object::new(ctx),
@@ -87,7 +98,7 @@ public entry fun create_order<T: store>(
         is_multiple_fills_allowed,
         remaining_coins: deposit,
         filled_amount: 0,
-        merkle_root,
+        auction_details,
     };
 
     event::emit(OrderCreated {
@@ -161,10 +172,10 @@ public fun is_multiple_fills_allowed<T: store>(order: &Order<T>): bool {
     order.is_multiple_fills_allowed
 }
 
-public fun get_merkle_root<T: store>(order: &Order<T>): Option<vector<u8>> {
-    order.merkle_root
-}
-
 public fun is_order_active<T: store>(order: &Order<T>): bool {
     coin::value(&order.remaining_coins) > 0
+}
+
+public fun get_auction_details<T: store>(order: &Order<T>): AuctionDetails {
+    order.auction_details
 }
