@@ -83,7 +83,6 @@ public fun new_signature_data(
 
 // Merkle proof data structure
 public struct MerkleProofData has drop {
-    partsAmount: u16,
     hashlock_info: vector<u8>,
     secret_hash: vector<u8>,
     secret_index: u16,
@@ -92,14 +91,12 @@ public struct MerkleProofData has drop {
 
 // Helper function to create merkle proof data
 public fun new_merkle_proof_data(
-    partsAmount: u16,
     hashlock_info: vector<u8>,
     secret_hash: vector<u8>,
     secret_index: u16,
     proof: vector<vector<u8>>,
 ): MerkleProofData {
     MerkleProofData {
-        partsAmount,
         hashlock_info,
         secret_hash,
         secret_index,
@@ -163,38 +160,41 @@ public fun create_new<T: store>(
         assert!(is_partial_fill_allowed, EPartialFillsNotAllowed);
     };
 
-    let verify = merkle_proof::verify_proof_for_order(
-        merkle_data.secret_index,
-        &merkle_data.secret_hash,
-        &merkle_data.proof,
-        &merkle_data.hashlock_info,
-    );
-
-    assert!(verify == true, EInvalidProof);
-
-    let key = merkle_proof::compute_validation_key(
-        order_hash,
-        merkle_data.hashlock_info,
-    );
-
-    let validation_data = ValidationData {
-        index: merkle_data.secret_index + 1,
-        leaf: merkle_data.secret_hash,
-    };
-
-    table::add(&mut validation_registry.validations, key, validation_data);
-
     let mut hashlock = merkle_data.hashlock_info;
 
     if (is_multiple_fills_allowed) {
-        assert!(merkle_data.partsAmount > 1, EInvalidProof);
+        let calculated_merkle_root = merkle_proof::process_proof(
+            merkle_data.secret_index as u64,
+            merkle_data.secret_hash,
+            merkle_data.proof,
+        );
+
+        assert!(
+            extract_merkle_root_shortened(&calculated_merkle_root) == extract_merkle_root_shortened(&merkle_data.hashlock_info),
+            EInvalidProof,
+        );
+
+        let key = merkle_proof::compute_validation_key(
+            order_hash,
+            merkle_data.hashlock_info,
+        );
+
+        let validation_data = ValidationData {
+            index: merkle_data.secret_index + 1,
+            leaf: merkle_data.secret_hash,
+        };
+
+        table::add(&mut validation_registry.validations, key, validation_data);
+
+        let parts_amount = extract_parts_amount(&merkle_data.hashlock_info);
+        assert!(parts_amount > 1, EInvalidProof);
         hashlock = validation_data.leaf;
         assert!(
             is_valid_partial_fill(
                 actual_making_amount,
                 remaining_making_amount,
                 making_amount,
-                merkle_data.partsAmount as u64,
+                parts_amount as u64,
                 validation_data.index as u64,
             ),
             EInvalidProof,
@@ -404,27 +404,26 @@ fun is_valid_partial_fill(
     return calculated_index + 1 == validated_index
 }
 
-// Global validation registry functions
-public fun add_validation(
-    registry: &mut ValidationRegistry,
-    key: vector<u8>,
-    validation_data: ValidationData,
-) {
-    if (table::contains(&registry.validations, key)) {
-        *table::borrow_mut(&mut registry.validations, key) = validation_data;
-    } else {
-        table::add(&mut registry.validations, key, validation_data);
-    }
+// Extract parts_amount (first 16 bits) using bit shift - just like Solidity!
+fun extract_parts_amount(hashlock_info: &vector<u8>): u16 {
+    // Extract first 2 bytes and convert to u16 (big-endian)
+    let byte1 = *vector::borrow(hashlock_info, 0) as u16;
+    let byte2 = *vector::borrow(hashlock_info, 1) as u16;
+
+    (byte1 << 8) | byte2
 }
 
-public fun get_validation(registry: &ValidationRegistry, key: &vector<u8>): Option<ValidationData> {
-    if (table::contains(&registry.validations, *key)) {
-        option::some(*table::borrow(&registry.validations, *key))
-    } else {
-        option::none()
-    }
-}
+// Extract merkle_root_shortened as vector<u8> (30 bytes)
+fun extract_merkle_root_shortened(hashlock_info: &vector<u8>): vector<u8> {
+    assert!(vector::length(hashlock_info) == 32, EInvalidProof);
 
-public fun has_validation(registry: &ValidationRegistry, key: &vector<u8>): bool {
-    table::contains(&registry.validations, *key)
+    let mut merkle_root = vector::empty<u8>();
+    let mut i = 2; // Start from byte 2 (skip first 16 bits)
+
+    while (i < 32) {
+        vector::push_back(&mut merkle_root, *vector::borrow(hashlock_info, i));
+        i = i + 1;
+    };
+
+    merkle_root
 }
