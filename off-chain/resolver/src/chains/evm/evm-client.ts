@@ -11,8 +11,9 @@ import { EvmCrossChainOrder } from "../../../../../cross-chain-sdk/src/cross-cha
 import { EvmAddress } from "../../../../../cross-chain-sdk/src/domains/addresses";
 import { Immutables } from "../../../../../cross-chain-sdk/src/domains/immutables";
 import { EscrowFactory } from "../helper/escrow-factory";
+import { HashLock } from "domains/hash-lock";
 
-export class EVMClient implements ChainClient {
+export class EVMClient  {
     private config: EVMConfig;
     private signer: any; 
     private provider: any;
@@ -32,8 +33,9 @@ export class EVMClient implements ChainClient {
     async createSrcEscrow(
         chainId: number,
         order: EvmCrossChainOrder, 
+        hashLock: HashLock, // Different for Full fill and Partial fill
         signature: string,
-        fillAmount: bigint
+        fillAmount: bigint // order.makingAmount
     ): Promise<{ txHash: string; blockHash: string }> {
         try {
             // Build taker traits for the order execution
@@ -43,7 +45,8 @@ export class EVMClient implements ChainClient {
                 .setAmountThreshold(order.takingAmount);
 
             // Get hash lock from order
-            const hashLock = order.escrowExtension.hashLockInfo;
+            // TODO: change this hash lock for SingleFill and PartialFill forMultipleFills
+            // const hashLock = order.escrowExtension.hashLockInfo;
 
             // Decode signature to get r, vs components
             const sig = ethers.Signature.from(signature);

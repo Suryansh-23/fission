@@ -1,4 +1,4 @@
-import { Extension } from '../../../../cross-chain-sdk/src';
+import { Extension, HashLock } from '../../../../cross-chain-sdk/src';
 import { 
     EvmCrossChainOrder, 
     SvmCrossChainOrder 
@@ -9,6 +9,7 @@ import { EVMClient } from '../chains/evm/evm-client';
 import { SuiClient } from '../chains/sui/sui-client';
 import { RelayerRequestParams } from '../../../../cross-chain-sdk/src/api/relayer/types';
 import { ResolverWebSocketClient } from '../communication/ws';
+import { Hash } from 'crypto';
 
 // Order data stored in the mapping - includes original params + converted order + runtime data
 interface StoredOrderData {
@@ -38,6 +39,18 @@ export class OrderManager {
         this.evmClient = evmClient;
         this.suiClient = suiClient;
         console.log('OrderManager initialized');
+    }
+
+    /**
+     * Get resolver ID from environment with validation
+     * @returns Resolver ID (1-indexed)
+     */
+    private getResolverId(): number {
+        const resolverId = parseInt(process.env.RESOLVER_ID || '1');
+        if (isNaN(resolverId) || resolverId < 1) {
+            throw new Error(`Invalid RESOLVER_ID: ${process.env.RESOLVER_ID}. Must be a positive integer.`);
+        }
+        return resolverId;
     }
 
     /**
@@ -82,6 +95,8 @@ export class OrderManager {
         this.orders.set(orderHash, storedOrderData);
         console.log(`Order registered with hash: ${orderHash}`);
         console.log(`Source Chain: ${relayerParams.srcChainId}, Destination Chain: ${crossChainOrder.dstChainId}`);
+
+        // TODO: this will call the executeOrder function, which will deploy the src and dst escrow function.
     }
 
     /**
@@ -89,19 +104,6 @@ export class OrderManager {
      */
     private isEVMChain(chainId: SupportedChain): boolean {
         return isEvm(chainId);
-    }
-
-    // Utility methods for debugging/testing
-    public getOrder(orderId: string): StoredOrderData | undefined {
-        return this.orders.get(orderId);
-    }
-
-    public getOrderCount(): number {
-        return this.orders.size;
-    }
-
-    public getAllOrders(): Map<string, StoredOrderData> {
-        return new Map(this.orders);
     }
 
     public async getClientsHealth(): Promise<{ evm: boolean; sui: boolean }> {
@@ -146,9 +148,9 @@ export class OrderManager {
         // @note and the fillAmount (param of EVMClient) will be divided by total count (stored in ENV)
         let fillAmount;
         if (storedOrder.isPartialFill) {
-            fillAmount = crossChainOrder.takingAmount / BigInt(process.env.TOTAL_COUNT || 2);
+            fillAmount = crossChainOrder.makingAmount / BigInt(process.env.TOTAL_COUNT || 2);
         } else {
-            fillAmount = crossChainOrder.takingAmount;
+            fillAmount = crossChainOrder.makingAmount;
         }
         // const fillAmount = crossChainOrder.takingAmount / process.env.TOTAL_COUNT;
         console.log(`Fill amount: ${fillAmount.toString()}`);
@@ -163,8 +165,41 @@ export class OrderManager {
 
             if (fromEVM) {
                 console.log(`Using EVM client for source deployment`);
-                srcResult = await this.evmClient.createSrcEscrow(srcChainId, crossChainOrder, signature, fillAmount);
-                // const srcHash = srcResult.txHash;
+                
+                // Get resolver ID from environment (1-indexed)
+                const resolverId = this.getResolverId();
+                console.log(`Resolver ID: ${resolverId}`);
+                
+                let hashLock: HashLock;
+                
+                if (storedOrder.isPartialFill && originalParams.secretHashes && originalParams.secretHashes.length > 1) {
+                    // Partial fills
+                    
+                    console.log(`Partial fill detected with ${originalParams.secretHashes.length} secret hashes`);
+                    
+                    // Convert secret hashes to merkle leaves for multiple fills
+                    const merkleLeaves = HashLock.getMerkleLeavesFromSecretHashes(originalParams.secretHashes);
+                    hashLock = HashLock.forMultipleFills(merkleLeaves);
+                    
+                    console.log(`Created hashlock for partial fills with ${merkleLeaves.length} leaves`);
+                } else {
+                    // Single fill - check if this resolver should handle it (only resolver ID 1)
+                    if (resolverId !== 1) {
+                        console.log(`Single fill order but resolver ID is ${resolverId}. Only resolver ID 1 handles single fills. Skipping order execution.`);
+                        return;
+                    }
+                    
+                    // Single fill - use the first (and only) secret hash
+                    const secretHash = originalParams.secretHashes?.[0];
+                    if (!secretHash) {
+                        throw new Error('No secret hash available for single fill order');
+                    }
+                    
+                    hashLock = HashLock.forSingleFill(secretHash);
+                    console.log(`Created hashlock for single fill`);
+                }
+                
+                srcResult = await this.evmClient.createSrcEscrow(srcChainId, crossChainOrder, hashLock, signature, fillAmount);
                 console.log(`EVM source escrow deployed - TxHash: ${srcResult.txHash}`);
                 
                 // Get source complement from factory event
@@ -172,7 +207,40 @@ export class OrderManager {
                 storedOrder.srcComplement = srcComplement;
             } else {
                 console.log(`Using Sui client for source deployment`);
-                srcResult = await this.suiClient.createSrcEscrow(srcChainId, crossChainOrder, signature, fillAmount);
+                
+                // Get resolver ID from environment (1-indexed)
+                const resolverId = this.getResolverId();
+                console.log(`Resolver ID: ${resolverId}`);
+                
+                let hashLock: HashLock;
+
+                if (storedOrder.isPartialFill && originalParams.secretHashes && originalParams.secretHashes.length > 1) {
+
+                    console.log(`Partial fill detected with ${originalParams.secretHashes.length} secret hashes`);
+                    
+                    // Convert secret hashes to merkle leaves for multiple fills
+                    const merkleLeaves = HashLock.getMerkleLeavesFromSecretHashes(originalParams.secretHashes);
+                    hashLock = HashLock.forMultipleFills(merkleLeaves);
+                    
+                    console.log(`Created hashlock for partial fills with ${merkleLeaves.length} leaves`);
+                } else {
+                    // Single fill - check if this resolver should handle it (only resolver ID 1)
+                    if (resolverId !== 1) {
+                        console.log(`Single fill order but resolver ID is ${resolverId}. Only resolver ID 1 handles single fills. Skipping order execution.`);
+                        return;
+                    }
+                    
+                    // Single fill - use the first (and only) secret hash
+                    const secretHash = originalParams.secretHashes?.[0];
+                    if (!secretHash) {
+                        throw new Error('No secret hash available for single fill order');
+                    }
+
+                    hashLock = HashLock.forSingleFill(secretHash);
+                    console.log(`Created hashlock for single fill`);
+                }
+                
+                srcResult = await this.suiClient.createSrcEscrow(srcChainId, crossChainOrder, hashLock, signature, fillAmount);
                 console.log(`Sui source escrow deployed - TxHash: ${srcResult.txHash}`);
                 
                 // TODO: Get source complement from Sui factory event
@@ -185,7 +253,10 @@ export class OrderManager {
             await this.sleep(srcFinalityTimeout);
             console.log(`Source chain finality lock completed`);
 
-            // Step 3: Deploy destination escrow
+            ///////////////////////////////////////////////////////
+            // Step 3: Deploy destination escrow //////////////////
+            ///////////////////////////////////////////////////////
+            
             console.log(`\nStep 3: Deploying destination escrow on ${fromEVM ? 'Sui' : 'EVM'} chain (${dstChainId})`);
             
             let dstResult: any;
@@ -281,14 +352,75 @@ export class OrderManager {
 
     /**
      * Handle secret reveal from maker
-     * TODO: Later integrate with withdraw function in OrderManager
+     * Processes secrets for both single and partial fill orders with resolver ID validation
      */
     public handleSecretReveal(secretData: SecretData): void {
         console.log(`Secret revealed for order ${secretData.orderHash}`);
         console.log(`Secret: ${secretData.secret}`);
         
+        // Get stored order data to determine fill type
+        const storedOrder = this.orders.get(secretData.orderHash);
+        if (!storedOrder) {
+            console.warn(`Order not found for hash: ${secretData.orderHash}. Ignoring secret reveal.`);
+            return;
+        }
+        
+        // Get resolver ID from environment (1-indexed)
+        const resolverId = this.getResolverId();
+        console.log(`Processing secret reveal for resolver ID: ${resolverId}`);
+        
+        if (storedOrder.isPartialFill && storedOrder.originalParams.secretHashes && storedOrder.originalParams.secretHashes.length > 1) {
+            // Partial fill case
+            console.log(`Partial fill order detected with ${storedOrder.originalParams.secretHashes.length} secret hashes`);
+            
+            // Check if this resolver should handle any part of this order
+            if (resolverId > storedOrder.originalParams.secretHashes.length) {
+                console.log(`Resolver ID ${resolverId} exceeds available secret hashes (${storedOrder.originalParams.secretHashes.length}). Ignoring secret reveal.`);
+                return;
+            }
+            
+            // TODO: Implement partial fill secret matching logic
+            // For now, we'll validate that the revealed secret matches one of the expected secret hashes
+            const revealedSecretHash = HashLock.hashSecret(secretData.secret);
+            const expectedSecretHashes = storedOrder.originalParams.secretHashes;
+            
+            const matchingIndex = expectedSecretHashes.findIndex(hash => hash === revealedSecretHash);
+            if (matchingIndex === -1) {
+                console.log(`Revealed secret does not match any expected secret hash. Ignoring.`);
+                return;
+            }
+            
+            console.log(`Secret matches expected hash at index ${matchingIndex}`);
+            
+            // TODO: Check if this specific resolver instance should handle this secret
+            // Placeholder: For now, log that this is a partial fill secret reveal
+            console.log(`[PARTIAL FILL] Secret revealed for resolver ID ${resolverId}, secret index ${matchingIndex}`);
+            console.log(`[PLACEHOLDER] Implement resolver-specific partial fill logic here`);
+            
+        } else {
+            // Single fill case
+            if (resolverId !== 1) {
+                console.log(`Single fill order but resolver ID is ${resolverId}. Only resolver ID 1 handles single fills. Ignoring secret reveal.`);
+                return;
+            }
+            
+            console.log(`[SINGLE FILL] Secret revealed for resolver ID 1`);
+            console.log(`Secret will be used for withdrawal from escrow`);
+            
+            // Validate the secret matches the expected hash
+            const expectedSecretHash = storedOrder.originalParams.secretHashes?.[0];
+            if (expectedSecretHash) {
+                const revealedSecretHash = HashLock.hashSecret(secretData.secret);
+                if (revealedSecretHash !== expectedSecretHash) {
+                    console.warn(`Revealed secret hash does not match expected hash. Ignoring.`);
+                    return;
+                }
+            }
+        }
+        
         // TODO: Store secret and trigger withdrawal process
         // This will later call orderManager.withdrawFromEscrow()
+        console.log(`Secret validation completed. Ready for withdrawal process.`);
     }
 
     /**

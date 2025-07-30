@@ -77,7 +77,13 @@ export class SuiClient {
         return this.resolverCapId;
     }
     
-    async createSrcEscrow(chainId: number, order: any, signature: string, fillAmount: bigint): Promise<{ txHash: string; blockHash: string }> {
+    async createSrcEscrow(
+        chainId: number, 
+        order: any, 
+        hashLock: any, 
+        signature: string, 
+        fillAmount: bigint
+    ): Promise<{ txHash: string; blockHash: string }> {
         // TODO: Implement Sui source escrow deployment
         throw new Error("Sui createSrcEscrow not implemented yet - requires src_escrow Move contract");
     }
