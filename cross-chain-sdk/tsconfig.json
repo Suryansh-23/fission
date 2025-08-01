@@ -1,0 +1,17 @@
+{
+  // "extends": "@1inch/tsconfig",
+  "compilerOptions": {
+    "target": "ES2021",
+    "lib": ["ES2021"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "removeComments": false,
+    "baseUrl": "./src"
+  },
+  "include": ["./src/**/*.ts", "./src/**/*.json"]
+}

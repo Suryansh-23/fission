@@ -1,0 +1,12 @@
+[submodule "contracts/evm/lib/forge-std"]
+	path = contracts/evm/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "contracts/evm/resolver/lib/forge-std"]
+	path = contracts/evm/resolver/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "contracts/evm/resolver/lib/cross-chain-swap"]
+	path = contracts/evm/resolver/lib/cross-chain-swap
+	url = https://github.com/1inch/cross-chain-swap
+[submodule "contracts/evm/resolver/lib/openzeppelin-contracts"]
+	path = contracts/evm/resolver/lib/openzeppelin-contracts
+	url = https://github.com/Openzeppelin/openzeppelin-contracts
