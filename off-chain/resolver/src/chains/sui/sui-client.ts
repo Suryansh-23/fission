@@ -448,7 +448,106 @@ export class SuiClient {
      * Withdraw from escrow - simplified interface for ChainClient compatibility
      */
     async withdrawFromEscrow(): Promise<any> {
-        throw new Error("Use withdrawFromEscrowDetailed() method for full functionality");
+        throw new Error("Use withdrawFromSrcEscrow() or withdrawFromDstEscrow() methods for full functionality");
+    }
+
+    /**
+     * Withdraw from source escrow on Sui chain (Sui → ETH direction)
+     * Maps to the resolver::withdraw_src Move function
+     */
+    async withdrawFromSrcEscrow(
+        escrowId: string,
+        secret: Uint8Array,
+        targetAddress: string,
+        coinType: string = SuiCoinHelper.SUI_TYPE
+    ): Promise<{ txHash: string; blockHash: string }> {
+        try {
+            console.log('[SuiClient] Withdrawing from source escrow');
+            console.log(`[SuiClient]   Escrow ID: ${escrowId}`);
+            console.log(`[SuiClient]   Target Address: ${targetAddress}`);
+            console.log(`[SuiClient]   Coin Type: ${coinType}`);
+
+            const tx = new Transaction();
+
+            // Call the resolver contract's withdraw_src function
+            tx.moveCall({
+                target: `${this.config.packageId}::resolver::withdraw_src`,
+                typeArguments: [coinType],
+                arguments: [
+                    tx.object(this.getResolverCapId()),
+                    tx.object(escrowId),
+                    tx.pure.vector('u8', Array.from(secret)),
+                    tx.pure.address(targetAddress),
+                ],
+            });
+
+            const result = await this.client.signAndExecuteTransaction({
+                transaction: tx,
+                signer: this.keypair,
+                options: {
+                    showEffects: true,
+                    showEvents: true,
+                },
+            });
+
+            console.log(`[SuiClient] Source escrow withdrawal completed - TxHash: ${result.digest}`);
+            return {
+                txHash: result.digest,
+                blockHash: result.digest,
+            };
+
+        } catch (error) {
+            console.error('[SuiClient] Error withdrawing from source escrow:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Withdraw from destination escrow on Sui chain (ETH → Sui direction)
+     * Maps to the resolver::withdraw_dst Move function
+     */
+    async withdrawFromDstEscrow(
+        escrowId: string,
+        secret: Uint8Array,
+        coinType: string = SuiCoinHelper.SUI_TYPE
+    ): Promise<{ txHash: string; blockHash: string }> {
+        try {
+            console.log('[SuiClient] Withdrawing from destination escrow');
+            console.log(`[SuiClient]   Escrow ID: ${escrowId}`);
+            console.log(`[SuiClient]   Coin Type: ${coinType}`);
+
+            const tx = new Transaction();
+
+            // Call the resolver contract's withdraw_dst function
+            tx.moveCall({
+                target: `${this.config.packageId}::resolver::withdraw_dst`,
+                typeArguments: [coinType],
+                arguments: [
+                    tx.object(this.getResolverCapId()),
+                    tx.object(escrowId),
+                    tx.pure.vector('u8', Array.from(secret)),
+                ],
+            });
+
+            const result = await this.client.signAndExecuteTransaction({
+                transaction: tx,
+                signer: this.keypair,
+                options: {
+                    showEffects: true,
+                    showEvents: true,
+                },
+            });
+
+            console.log(`[SuiClient] Destination escrow withdrawal completed - TxHash: ${result.digest}`);
+            return {
+                txHash: result.digest,
+                blockHash: result.digest,
+            };
+
+        } catch (error) {
+            console.error('[SuiClient] Error withdrawing from destination escrow:', error);
+            throw error;
+        }
     }
 
     /**
@@ -460,46 +559,8 @@ export class SuiClient {
         secret: Uint8Array,
         coinType: string = SuiCoinHelper.SUI_TYPE
     ): Promise<{ txHash: string; blockHash: string }> {
-        try {
-            console.log('Withdrawing from Sui destination escrow');
-
-            if (!escrowId || !secret) {
-                throw new Error('Escrow ID and secret are required for Sui withdrawal');
-            }
-
-            const tx = new Transaction();
-
-            // Call the resolver contract's withdraw_dst function
-            tx.moveCall({
-                target: `${this.config.packageId}::resolver::withdraw_dst`,
-                typeArguments: [coinType],
-                arguments: [
-                    tx.object(this.getResolverCapId()), 
-                    tx.object(escrowId), 
-                    tx.pure.vector('u8', Array.from(secret)), 
-                ],
-            });
-
-            const result = await this.client.signAndExecuteTransaction({
-                transaction: tx,
-                signer: this.keypair,
-                options: {
-                    showEffects: true,
-                    showEvents: true,
-                    showObjectChanges: true,
-                },
-            });
-
-            console.log(`Withdrawal successful - TxHash: ${result.digest}`);
-            return {
-                txHash: result.digest,
-                blockHash: result.digest
-            };
-
-        } catch (error) {
-            console.error('Error withdrawing from escrow:', error);
-            throw error;
-        }
+        // Delegate to withdrawFromDstEscrow for backwards compatibility
+        return this.withdrawFromDstEscrow(escrowId, secret, coinType);
     }
 
     /**

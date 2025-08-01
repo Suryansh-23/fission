@@ -12,6 +12,8 @@ import { EvmAddress } from "../../../../../cross-chain-sdk/src/domains/addresses
 import { Immutables } from "../../../../../cross-chain-sdk/src/domains/immutables";
 import { EscrowFactory } from "../helper/escrow-factory";
 import { HashLock } from "domains/hash-lock";
+import * as ResolverJson from "./Resolver.json";
+export const RESOLVER_ABI = ResolverJson.abi;
 
 export class EVMClient  {
     private config: EVMConfig;
@@ -62,13 +64,9 @@ export class EVMClient  {
 
             // Contract ABI matching the exact Resolver contract
             // TODO: Replace with actual Resolver contract ABI
-            const resolverContractAbi = [
-                'function deploySrc(tuple(bytes32 orderHash, bytes32 hashlock, address maker, address taker, address token, uint256 amount, uint256 safetyDeposit, uint256 timelocks) immutables, tuple(uint256 salt, address maker, address receiver, address makerAsset, address takerAsset, uint256 makingAmount, uint256 takingAmount, uint256 makerTraits) order, bytes32 r, bytes32 vs, uint256 amount, uint256 takerTraits, bytes args) payable'
-            ];
-            
             const contract = new ethers.Contract(
-                this.config.relayerContractAddress, 
-                resolverContractAbi, 
+                this.config.relayerContractAddress,
+                RESOLVER_ABI,
                 this.signer
             );
 
@@ -140,13 +138,9 @@ export class EVMClient  {
             const srcCancellationTimestamp = dstImmutables.timeLocks.toSrcTimeLocks().privateCancellation;
 
             // Contract ABI matching the exact Resolver.deployDst method
-            const resolverContractAbi = [
-                'function deployDst(tuple(bytes32 orderHash, bytes32 hashlock, address maker, address taker, address token, uint256 amount, uint256 safetyDeposit, uint256 timelocks) dstImmutables, uint256 srcCancellationTimestamp) payable'
-            ];
-            
             const contract = new ethers.Contract(
-                this.config.relayerContractAddress, 
-                resolverContractAbi, 
+                this.config.relayerContractAddress,
+                RESOLVER_ABI,
                 this.signer
             );
 
@@ -181,13 +175,9 @@ export class EVMClient  {
             }
 
             // Contract ABI matching the exact Resolver.withdraw method
-            const resolverContractAbi = [
-                'function withdraw(address escrow, bytes32 secret, tuple(bytes32 orderHash, bytes32 hashlock, address maker, address taker, address token, uint256 amount, uint256 safetyDeposit, uint256 timelocks) immutables)'
-            ];
-            
             const contract = new ethers.Contract(
-                this.config.relayerContractAddress, 
-                resolverContractAbi, 
+                this.config.relayerContractAddress,
+                RESOLVER_ABI,
                 this.signer
             );
 
@@ -235,13 +225,9 @@ export class EVMClient  {
             }
 
             // Contract ABI matching the exact Resolver.cancel method
-            const resolverContractAbi = [
-                'function cancel(address escrow, tuple(bytes32 orderHash, bytes32 hashlock, address maker, address taker, address token, uint256 amount, uint256 safetyDeposit, uint256 timelocks) immutables)'
-            ];
-            
             const contract = new ethers.Contract(
-                this.config.relayerContractAddress, 
-                resolverContractAbi, 
+                this.config.relayerContractAddress,
+                RESOLVER_ABI,
                 this.signer
             );
 
@@ -287,13 +273,7 @@ export class EVMClient  {
     private async getContract(): Promise<ethers.Contract> {
         // TODO: Replace with actual Resolver contract ABI
         // Placeholder ABI - will be replaced with complete resolver contract ABI
-        const resolverContractAbi = [
-            'function deploySrc(tuple immutables, tuple order, bytes32 r, bytes32 vs, uint256 amount, uint256 takerTraits, bytes args) payable',
-            'function cancel(address escrow, tuple immutables)'
-            // TODO: Add other resolver contract functions (deployDst, withdraw, etc.)
-        ];
-        
-        return new ethers.Contract(this.config.relayerContractAddress, resolverContractAbi, this.signer);
+        return new ethers.Contract(this.config.relayerContractAddress, RESOLVER_ABI, this.signer);
     }
 }
 
