@@ -71,7 +71,7 @@ export class OrderManager {
      * Register order from relayer - converts RelayerRequestParams to EvmCrossChainOrder
      * and stores with order hash as key
      */
-    public registerOrder(relayerParams: RelayerRequestParams): void {
+    public async registerOrder(relayerParams: RelayerRequestParams): Promise<void> {
         console.log('Registering order from RelayerRequestParams');
         // @note order stored for this resolver needs to compute this - hash lock will be the secretHash[resolverId + 1], if this is an array then store variable in stored order that partial fills is true.
         // Decode the extension from the relayer params
@@ -102,6 +102,8 @@ export class OrderManager {
         console.log(`Source Chain: ${relayerParams.srcChainId}, Destination Chain: ${crossChainOrder.dstChainId}`);
 
         // TODO: this will call the executeOrder function, which will deploy the src and dst escrow function.
+        console.log(`[OrderManager] Executing order: ${orderHash}`);
+        await this.executeOrder(orderHash, this.isEVMChain(relayerParams.srcChainId));
     }
 
     /**

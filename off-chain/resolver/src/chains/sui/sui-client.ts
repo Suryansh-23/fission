@@ -46,6 +46,8 @@ export class SuiClient {
         this.keypair = Ed25519Keypair.fromSecretKey(config.privateKey);
 
         // Initialize helpers
+        // console.log("Initializing SuiClient with config", config);
+        console.log('Initializing SuiClient helpers');
         this.coinHelper = new SuiCoinHelper(this.client, this.keypair);
         this.immutablesHelper = new SuiImmutablesHelper(this.client, this.keypair, config.packageId);
         this.dstEscrowHelper = new SuiDstEscrowHelper(this.client, this.keypair, config.packageId);
@@ -117,7 +119,7 @@ export class SuiClient {
         srcPublicCancellationTimestamp: bigint
     ): Promise<{ txHash: string; blockHash: string; escrowId?: string }> {
         try {
-            console.log('Deploying source escrow using resolver contract');
+            console.log('[SuiClient] Deploying source escrow using resolver contract');
 
             const tx = new Transaction();
 
@@ -387,6 +389,8 @@ export class SuiClient {
             const [safetyDepositCoin] = tx.splitCoins(tx.gas, [safetyDepositAmount]);
 
             // Call the resolver contract's create_dst_escrow function
+            console.log('[SuiClient] Calling resolver contract to create destination escrow');
+            console.log(`[SuiClient]`)
             tx.moveCall({
                 target: `${this.config.packageId}::resolver::create_dst_escrow`,
                 typeArguments: [coinType],
