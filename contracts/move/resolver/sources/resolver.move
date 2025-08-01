@@ -91,12 +91,15 @@ public entry fun create_dst_escrow<T: store>(
         dst_cancellation_timestamp,
     );
 
+    let type_name = type_name::get<T>();
+    let asset_id = type_name::get_address(&type_name);
+
     let immutables: Immutables = immutables::new(
         order_hash,
         hashlock,
         maker,
         taker,
-        type_name::get<T>(),
+        asset_id,
         coin::value(&deposit),
         coin::value(&safety_deposit),
         timelocks,

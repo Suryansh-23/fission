@@ -1,8 +1,8 @@
 module fusion_plus::immutables;
 
 use std::bcs;
-use std::type_name::TypeName;
 use sui::hash;
+use std::ascii::String;
 
 public enum Timelocks has drop, store {
     SrcTimelocks {
@@ -25,7 +25,7 @@ public struct Immutables has store {
     hashlock: vector<u8>,
     maker: address,
     taker: address,
-    type_name: TypeName,
+    asset_id: String,
     deposit: u64,
     safety_deposit: u64,
     timelocks: Timelocks,
@@ -71,7 +71,7 @@ public fun new(
     hashlock: vector<u8>,
     maker: address,
     taker: address,
-    type_name: TypeName,
+    asset_id: String,
     deposit: u64,
     safety_deposit: u64,
     timelocks: Timelocks,
@@ -81,7 +81,7 @@ public fun new(
         hashlock,
         maker,
         taker,
-        type_name,
+        asset_id,
         deposit,
         safety_deposit,
         timelocks,
@@ -188,6 +188,6 @@ public fun get_safety_deposit_value(immutables: &Immutables): u64 {
     immutables.safety_deposit
 }
 
-public fun get_type_name(immutables: &Immutables): TypeName {
-    immutables.type_name
+public fun get_asset_id(immutables: &Immutables): String {
+    immutables.asset_id
 }

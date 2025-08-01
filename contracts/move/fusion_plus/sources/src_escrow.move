@@ -125,6 +125,8 @@ public fun create_new<T: store>(
     assert!(verify, EInvalidSignature);
 
     let type_name = type_name::get<T>();
+    let asset_id = type_name::get_address(&type_name);
+
     let maker = order::get_maker(order);
     let receiver = order::get_receiver(order);
     let order_making_amount = order::get_making_amount(order);
@@ -183,7 +185,7 @@ public fun create_new<T: store>(
         hashlock,
         maker,
         sender,
-        type_name,
+        asset_id,
         actual_making_amount,
         coin::value(&safety_deposit),
         timelocks,

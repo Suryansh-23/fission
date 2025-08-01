@@ -61,7 +61,8 @@ public fun create_new<T: store>(
     );
 
     let type_name = type_name::get<T>();
-    assert!(type_name == immutables::get_type_name(&immutables), EInvalidDeposit);
+    let asset_id = type_name::get_address(&type_name);
+    assert!(asset_id == immutables::get_asset_id(&immutables), EInvalidDeposit);
 
     let token_package_id = type_name::get_address(&type_name);
 
