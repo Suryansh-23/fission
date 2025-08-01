@@ -14,7 +14,9 @@ export enum NetworkEnum {
     LINEA = 59144,
     SONIC = 146,
     UNICHAIN = 130,
-    SOLANA = 501
+    SOLANA = 501,
+    // sui is contradicting but the other chain is not used generally
+    SUI = 101
 }
 
 export const SupportedChains = [
@@ -30,7 +32,8 @@ export const SupportedChains = [
     NetworkEnum.LINEA,
     NetworkEnum.SONIC,
     NetworkEnum.UNICHAIN,
-    NetworkEnum.SOLANA
+    NetworkEnum.SOLANA,
+    NetworkEnum.SUI
 ] as const
 
 type UnsupportedChain = Exclude<
