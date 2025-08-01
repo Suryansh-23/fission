@@ -121,7 +121,7 @@ type Immutables struct {
 type DstImmutablesComplement struct {
 	Maker         common.Address `abi:"maker" json:"maker"`
 	Amount        *big.Int       `abi:"amount" json:"amount"`
-	Token         common.Address `abi:"token" json:"token"`
+	Token         string         `abi:"token" json:"token"`
 	SafetyDeposit *big.Int       `abi:"safetyDeposit" json:"safetyDeposit"`
 	ChainId       *big.Int       `abi:"chainId" json:"chainId"`
 }
@@ -136,7 +136,6 @@ func FetchEvmSrcEscrowEvent(
 	ctx context.Context,
 	client *ethclient.Client,
 	txHash common.Hash,
-	logger *log.Logger,
 ) (*EvmSrcEscrowCreatedEvent, common.Address, time.Time, error) {
 	// 1. Parse the ABI
 	parsed, err := abi.JSON(strings.NewReader(escrowABI))
@@ -151,7 +150,7 @@ func FetchEvmSrcEscrowEvent(
 	}
 
 	// 2a. Fetch the block timestamp
-	timestamp, err := FetchTimeByBlockNumber(ctx, client, receipt.BlockNumber)
+	timestamp, err := FetchEvmTimeByBlockNumber(ctx, client, receipt.BlockNumber)
 	if err != nil {
 		return nil, common.Address{}, time.Time{}, err
 	}
@@ -199,14 +198,13 @@ func FetchEvmSrcEscrowEvent(
 				DstImmutablesComplement: DstImmutablesComplement{
 					Maker:         common.BigToAddress(dstImmutablesComplement.Maker),
 					Amount:        dstImmutablesComplement.Amount,
-					Token:         common.BigToAddress(dstImmutablesComplement.Token),
+					Token:         dstImmutablesComplement.Token.String(),
 					SafetyDeposit: dstImmutablesComplement.SafetyDeposit,
 					ChainId:       dstImmutablesComplement.ChainId,
 				},
 			}
 
-			logger.Printf("Fetching src escrow address for vLog.Address=%s", vLog.Address.String())
-			srcEscrowAddress, err := FetchSrcEscrowAddress(ctx, client, vLog.Address, srcImmutables, logger)
+			srcEscrowAddress, err := FetchSrcEscrowAddress(ctx, client, vLog.Address, srcImmutables)
 			if err != nil {
 				return nil, common.Address{}, time.Time{}, err
 			}
@@ -250,7 +248,7 @@ const dstEscrowABI = `[
 // Go struct matching the event fields
 type EvmDstEscrowCreatedEvent struct {
 	Escrow   common.Address `abi:"escrow"`
-	Hashlock [32]byte       `abi:"hashlock"`
+	Hashlock common.Hash    `abi:"hashlock"`
 	Taker    common.Address `abi:"taker"`
 }
 
@@ -274,7 +272,7 @@ func FetchEvmDstEscrowEvent(
 	}
 
 	// 2a. Fetch the block timestamp
-	timestamp, err := FetchTimeByBlockNumber(ctx, client, receipt.BlockNumber)
+	timestamp, err := FetchEvmTimeByBlockNumber(ctx, client, receipt.BlockNumber)
 	if err != nil {
 		return nil, time.Time{}, err
 	}
@@ -295,7 +293,7 @@ func FetchEvmDstEscrowEvent(
 				return nil, time.Time{}, errors.New("failed to unpack escrow address")
 			}
 
-			hashlock, ok := unpacked[1].([32]byte)
+			hashlock, ok := unpacked[1].(common.Hash)
 			if !ok {
 				return nil, time.Time{}, errors.New("failed to unpack hashlock")
 			}
@@ -318,7 +316,7 @@ func FetchEvmDstEscrowEvent(
 	return nil, time.Time{}, errors.New("DstEscrowCreated event not found")
 }
 
-func FetchTimeByBlockNumber(
+func FetchEvmTimeByBlockNumber(
 	ctx context.Context,
 	client *ethclient.Client,
 	blockNumber *big.Int,
@@ -424,10 +422,8 @@ func FetchSrcEscrowAddress(
 		SafetyDeposit *big.Int `json:"safetyDeposit"`
 		Timelocks     *big.Int `json:"timelocks"`
 	},
-	logger *log.Logger,
 ) (common.Address, error) {
 	// Parse the ABI
-	logger.Printf("Parsing ABI for escrow factory at %s", factoryAddress.String())
 	parsedABI, err := abi.JSON(strings.NewReader(escrowFactoryABI))
 	if err != nil {
 		return common.Address{}, err
@@ -443,7 +439,6 @@ func FetchSrcEscrowAddress(
 		immutables,
 	)
 	if err != nil {
-		logger.Printf("Error calling addressOfEscrowSrc: %v", err)
 		return common.Address{}, err
 	}
 

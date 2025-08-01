@@ -159,7 +159,15 @@ func (s *APIServer) SubmitOrder(c *gin.Context) {
 		return
 	}
 
+	var orderType manager.OrderType
+	if len(order.SecretHashes) > 0 {
+		orderType = manager.MultiFill
+	} else {
+		orderType = manager.SingleFill
+	}
+
 	s.manager.SetOrder(manager.OrderEntry{
+		OrderType:   orderType,
 		OrderHash:   hash,
 		Order:       &order,
 		OrderStatus: orderStatus,
@@ -230,12 +238,12 @@ func (s *APIServer) GetReadyToAcceptSecretFills(c *gin.Context) {
 	}
 
 	// lock and borrow ref
-	orderEntry.FillsMutex.Lock()
+	orderEntry.OrderMutMutex.Lock()
 	fills := orderEntry.OrderFills.Fills
 
 	// replace old ref with new
 	orderEntry.OrderFills.Fills = make([]common.ReadyToAcceptSecretFill, 0, cap(fills)/2)
-	orderEntry.FillsMutex.Unlock()
+	orderEntry.OrderMutMutex.Unlock()
 
 	if len(fills) == 0 {
 		c.JSON(http.StatusOK, common.ReadyToAcceptSecretFills{

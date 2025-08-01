@@ -27,10 +27,18 @@ type QuoteEntry struct {
 	Quote        *common.Quote
 }
 
+type OrderType string
+
+const (
+	SingleFill OrderType = "SINGLE_FILL"
+	MultiFill  OrderType = "MULTI_FILL"
+)
+
 type OrderEntry struct {
-	OrderHash   ethcommon.Hash
-	Order       *common.Order
-	OrderStatus *common.OrderStatus
-	OrderFills  *common.ReadyToAcceptSecretFills
-	FillsMutex  *sync.Mutex
+	OrderType     OrderType
+	OrderHash     ethcommon.Hash
+	Order         *common.Order
+	OrderStatus   *common.OrderStatus
+	OrderFills    *common.ReadyToAcceptSecretFills
+	OrderMutMutex *sync.Mutex
 }

@@ -64,6 +64,15 @@ func main() {
 	go initServer(apiServer, apiDone, logger)
 	go initServer(wsServer, wsDone, logger)
 
+	// test
+	// chain.FetchMoveDstEscrowEvent(context.Background(), manager.SuiClient, "AyUtNpDt9jCRvu4TZVhu54ZYxi2uAvmfKsX2T6XWtp46")
+	// timestamp, err := chain.FetchMoveTimeByTx(context.Background(), manager.SuiClient, "AyUtNpDt9jCRvu4TZVhu54ZYxi2uAvmfKsX2T6XWtp46")
+	// if err != nil {
+	// 	logger.Printf("failed to fetch move time: %v", err)
+	// }
+
+	// logger.Printf("Move time: %s", timestamp)
+
 	// Wait for the graceful shutdown to complete
 	select {
 	case <-apiDone:
