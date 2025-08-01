@@ -20,7 +20,6 @@ fun init(ctx: &mut TxContext) {
     transfer::transfer(cap, tx_context::sender(ctx));
 }
 
-// TODO: create_src_escrow
 public entry fun create_src_escrow<T: store>(
     _cap: &ResolverCap,
     order: &mut Order<T>,
@@ -31,7 +30,7 @@ public entry fun create_src_escrow<T: store>(
     scheme: u8,
     hashlock_info: vector<u8>,
     secret_hash: vector<u8>,
-    secret_index: u16,
+    secret_index: u64,
     proof: vector<vector<u8>>,
     src_withdrawal_timestamp: u64,
     src_public_withdrawal_timestamp: u64,

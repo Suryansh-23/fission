@@ -8,10 +8,9 @@ module fusion_plus::merkle_proof;
 use sui::hash;
 
 // Compute leaf hash: keccak256(abi.encodePacked(uint64(index), secretHash))
-public fun compute_leaf_hash(index: u16, secret_hash: vector<u8>): vector<u8> {
+public fun compute_leaf_hash(index: u64, secret_hash: vector<u8>): vector<u8> {
     let mut combined = vector::empty<u8>();
 
-    // Convert u64 to bytes (big-endian, 8 bytes)
     let mut i = 0;
     while (i < 8) {
         let byte = ((index >> (56 - i * 8)) & 0xFF as u8);
@@ -63,7 +62,7 @@ public fun process_proof(
     secret_hash: vector<u8>,
     merkle_proof: vector<vector<u8>>,
 ): vector<u8> {
-    let leaf = compute_leaf_hash(secret_index as u16, secret_hash);
+    let leaf = compute_leaf_hash(secret_index, secret_hash);
     let calculated_root = process_merkle_proof(leaf, secret_index, &merkle_proof);
     calculated_root
 }

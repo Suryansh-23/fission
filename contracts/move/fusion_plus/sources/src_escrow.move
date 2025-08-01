@@ -1,6 +1,6 @@
 module fusion_plus::src_escrow;
 
-use fusion_plus::auction_calculator::{Self};
+use fusion_plus::auction_calculator;
 use fusion_plus::immutables::{Self, Immutables, Timelocks};
 use fusion_plus::merkle_proof;
 use fusion_plus::order::{Self, Order};
@@ -73,7 +73,7 @@ public fun new_signature_data(
 public struct MerkleProofData has drop {
     hashlock_info: vector<u8>,
     secret_hash: vector<u8>,
-    secret_index: u16,
+    secret_index: u64,
     proof: vector<vector<u8>>,
 }
 
@@ -81,7 +81,7 @@ public struct MerkleProofData has drop {
 public fun new_merkle_proof_data(
     hashlock_info: vector<u8>,
     secret_hash: vector<u8>,
-    secret_index: u16,
+    secret_index: u64,
     proof: vector<vector<u8>>,
 ): MerkleProofData {
     MerkleProofData {
@@ -152,7 +152,7 @@ public fun create_new<T: store>(
 
     if (is_multiple_fills_allowed) {
         let calculated_merkle_root = merkle_proof::process_proof(
-            merkle_data.secret_index as u64,
+            merkle_data.secret_index,
             merkle_data.secret_hash,
             merkle_data.proof,
         );
@@ -171,7 +171,7 @@ public fun create_new<T: store>(
                 remaining_making_amount,
                 order_making_amount,
                 parts_amount as u64,
-                (merkle_data.secret_index + 1) as u64,
+                merkle_data.secret_index + 1,
             ),
             EInvalidProof,
         );
@@ -271,10 +271,7 @@ public fun cancel<T: store>(escrow: &mut SrcEscrow<T>, ctx: &mut TxContext): Coi
 
 /// Public cancel function during public cancellation period (anyone can call)
 #[allow(lint(self_transfer))]
-public fun public_cancel<T: store>(
-    escrow: &mut SrcEscrow<T>,
-    ctx: &mut TxContext,
-): Coin<SUI> {
+public fun public_cancel<T: store>(escrow: &mut SrcEscrow<T>, ctx: &mut TxContext): Coin<SUI> {
     let current_time = ctx.epoch_timestamp_ms();
 
     assert!(
