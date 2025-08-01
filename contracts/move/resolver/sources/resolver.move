@@ -3,7 +3,6 @@ module resolver::resolver;
 use fusion_plus::dst_escrow::{Self, DstEscrow};
 use fusion_plus::immutables::{Self, Immutables};
 use fusion_plus::order::Order;
-use fusion_plus::registry::ResolverRegistry;
 use fusion_plus::src_escrow::{Self, SrcEscrow};
 use std::type_name;
 use sui::coin::{Self, Coin};
@@ -140,22 +139,20 @@ public entry fun withdraw_dst<T: store>(
 public entry fun public_withdraw_src<T: store>(
     _cap: &ResolverCap,
     escrow: &mut SrcEscrow<T>,
-    registry: &ResolverRegistry,
     secret: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    src_escrow::public_withdraw(escrow, registry, secret, ctx);
+    src_escrow::public_withdraw(escrow, secret, ctx);
 }
 
 // Main entry point for public withdrawal from destination escrows
 public entry fun public_withdraw_dst<T: store>(
     _cap: &ResolverCap,
     escrow: &mut DstEscrow<T>,
-    registry: &ResolverRegistry,
     secret: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    let safety_deposit = dst_escrow::public_withdraw(escrow, registry, secret, ctx);
+    let safety_deposit = dst_escrow::public_withdraw(escrow, secret, ctx);
     transfer::public_transfer(safety_deposit, tx_context::sender(ctx));
 }
 
@@ -183,10 +180,9 @@ public entry fun cancel_dst<T: store>(
 public entry fun public_cancel_src<T: store>(
     _cap: &ResolverCap,
     escrow: &mut SrcEscrow<T>,
-    registry: &ResolverRegistry,
     ctx: &mut TxContext,
 ) {
-    let safety_deposit = src_escrow::public_cancel(escrow, registry, ctx);
+    let safety_deposit = src_escrow::public_cancel(escrow, ctx);
     transfer::public_transfer(safety_deposit, tx_context::sender(ctx));
 }
 

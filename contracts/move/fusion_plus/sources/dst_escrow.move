@@ -1,7 +1,6 @@
 module fusion_plus::dst_escrow;
 
 use fusion_plus::immutables::{Self, Immutables};
-use fusion_plus::registry::{Self, ResolverRegistry};
 use std::ascii::String;
 use std::type_name;
 use sui::coin::{Self, Coin};
@@ -114,7 +113,6 @@ public fun withdraw<T: store>(
 // Public withdrawal function - allows withdrawal during public period with access token
 public fun public_withdraw<T: store>(
     escrow: &mut DstEscrow<T>,
-    registry: &ResolverRegistry,
     secret: vector<u8>,
     ctx: &mut TxContext,
 ): Coin<SUI> {
@@ -124,8 +122,6 @@ public fun public_withdraw<T: store>(
     let dst_cancellation_time = immutables::get_dst_cancellation_time(&escrow.immutables);
     assert!(current_time >= dst_public_withdrawal_time, EInvalidTime);
     assert!(current_time < dst_cancellation_time, EInvalidTime);
-
-    registry::assert_resolver(registry, ctx.sender().to_id());
 
     withdraw_internal(escrow, secret, ctx)
 }

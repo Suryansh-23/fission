@@ -4,7 +4,6 @@ use fusion_plus::auction_calculator::{Self};
 use fusion_plus::immutables::{Self, Immutables, Timelocks};
 use fusion_plus::merkle_proof;
 use fusion_plus::order::{Self, Order};
-use fusion_plus::registry::{Self, ResolverRegistry};
 use std::type_name;
 use sui::coin::{Self, Coin};
 use sui::ecdsa_k1;
@@ -236,12 +235,9 @@ public fun withdraw_to<T: store>(
 
 public fun public_withdraw<T: store>(
     escrow: &mut SrcEscrow<T>,
-    registry: &ResolverRegistry,
     secret: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    registry::assert_resolver(registry, ctx.sender().to_id());
-
     let current_time = ctx.epoch_timestamp_ms();
 
     // Check timelock: after public withdrawal time and before cancellation time
@@ -277,11 +273,8 @@ public fun cancel<T: store>(escrow: &mut SrcEscrow<T>, ctx: &mut TxContext): Coi
 #[allow(lint(self_transfer))]
 public fun public_cancel<T: store>(
     escrow: &mut SrcEscrow<T>,
-    registry: &ResolverRegistry,
     ctx: &mut TxContext,
 ): Coin<SUI> {
-    registry::assert_resolver(registry, ctx.sender().to_id());
-
     let current_time = ctx.epoch_timestamp_ms();
 
     assert!(
