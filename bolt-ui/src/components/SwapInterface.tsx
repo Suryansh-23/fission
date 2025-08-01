@@ -1,34 +1,45 @@
 import React, { useState } from 'react';
-import { ChevronDown, ArrowUpDown, Settings } from 'lucide-react';
+import { ChevronDown, ArrowUpDown, Settings, Clock, CheckCircle, Loader } from 'lucide-react';
+import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useAccount } from 'wagmi';
+import { DEFAULT_EVM_TOKENS, DEFAULT_SUI_TOKENS } from '../constants/tokens';
+import crossChainSDK, { Quote, OrderStatus, PresetEnum } from '../services/crossChainSDK';
 
 interface Token {
   symbol: string;
   name: string;
   icon: string;
-  balance?: string;
+  decimals: number;
+  address: string;
+  chainId: number;
 }
 
 interface Chain {
   name: string;
   symbol: string;
+  chainId: number;
 }
 
+// Combine EVM and Sui tokens for the UI
 const tokens: Token[] = [
-  { symbol: 'ETH', name: 'Ether', icon: '🔵', balance: '~$53,439' },
-  { symbol: 'WBTC', name: 'Wrapped Bitcoin', icon: '🟠', balance: '~$45,000' },
-  { symbol: 'USDC', name: 'USD Coin', icon: '🔷', balance: '~$1,000' },
+  ...DEFAULT_EVM_TOKENS,
+  ...DEFAULT_SUI_TOKENS,
 ];
 
 const chains: Chain[] = [
-  { name: 'Ethereum', symbol: 'ETH' },
-  { name: 'Sui', symbol: 'SUI' },
+  { name: 'Ethereum', symbol: 'ETH', chainId: 1 },
+  { name: 'Polygon', symbol: 'MATIC', chainId: 137 },
+  { name: 'Sui', symbol: 'SUI', chainId: 0 },
 ];
 
 const SwapInterface: React.FC = () => {
+  const suiAccount = useCurrentAccount();
+  const { address: evmAddress } = useAccount();
+  
   const [payToken, setPayToken] = useState<Token>(tokens[0]);
   const [receiveToken, setReceiveToken] = useState<Token | null>(null);
   const [payChain, setPayChain] = useState<Chain>(chains[0]);
-  const [receiveChain, setReceiveChain] = useState<Chain>(chains[1]);
+  const [receiveChain, setReceiveChain] = useState<Chain>(chains[2]); // Default to Sui
   const [payAmount, setPayAmount] = useState<string>('');
   const [receiveAmount, setReceiveAmount] = useState<string>('0');
   const [isQuoted, setIsQuoted] = useState<boolean>(false);
@@ -38,21 +49,124 @@ const SwapInterface: React.FC = () => {
   const [slippage, setSlippage] = useState<string>('0.5');
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
-  const handleGetQuote = () => {
-    if (payAmount && receiveToken) {
-      // Simulate quote calculation
-      const mockReceiveAmount = (parseFloat(payAmount) * 0.998).toFixed(4);
-      setReceiveAmount(mockReceiveAmount);
+  // Cross-chain swap state
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [isLoadingQuote, setIsLoadingQuote] = useState<boolean>(false);
+  const [isProcessingSwap, setIsProcessingSwap] = useState<boolean>(false);
+  const [swapStatus, setSwapStatus] = useState<OrderStatus | null>(null);
+  const [currentOrderHash, setCurrentOrderHash] = useState<string | null>(null);
+
+  const handleGetQuote = async () => {
+    if (!payAmount || !receiveToken) return;
+
+    const walletAddress = payChain.chainId === 0 ? suiAccount?.address : evmAddress;
+    if (!walletAddress) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    setIsLoadingQuote(true);
+    try {
+      console.log('🔍 Getting cross-chain quote...');
+      
+      const quoteResponse = await crossChainSDK.getQuote({
+        amount: (BigInt(payAmount) * BigInt(10 ** payToken.decimals)).toString(),
+        srcChainId: payChain.chainId,
+        dstChainId: receiveChain.chainId,
+        srcTokenAddress: payToken.address,
+        dstTokenAddress: receiveToken.address,
+        walletAddress,
+        enableEstimate: true,
+      });
+
+      setQuote(quoteResponse);
+      // Convert bigint to number for display - SDK Quote uses bigint for amounts
+      const dstAmount = Number(quoteResponse.dstTokenAmount) / (10 ** receiveToken.decimals);
+      setReceiveAmount(dstAmount.toString());
       setIsQuoted(true);
+      
+      console.log('✅ Quote received:', quoteResponse);
+    } catch (error) {
+      console.error('❌ Failed to get quote:', error);
+      alert('Failed to get quote. Please try again.');
+    } finally {
+      setIsLoadingQuote(false);
     }
   };
 
-  const handleSwap = () => {
-    console.log('Executing swap...');
-    // Reset to initial state after swap
-    setIsQuoted(false);
-    setPayAmount('');
-    setReceiveAmount('0');
+  const handleSwap = async () => {
+    if (!quote || !payAmount || !receiveToken) return;
+
+    const walletAddress = payChain.chainId === 0 ? suiAccount?.address : evmAddress;
+    if (!walletAddress) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    setIsProcessingSwap(true);
+    try {
+      console.log('🚀 Starting cross-chain swap...');
+      
+      // Step 1: Generate secrets
+      const presetKey = singleFill ? PresetEnum.fast : PresetEnum.medium;
+      const secretCount = quote.presets[presetKey].secretsCount;
+      const generatedSecrets = crossChainSDK.generateSecrets(secretCount);
+      
+      // Step 2: Create hash lock
+      const hashLock = crossChainSDK.createHashLock(generatedSecrets);
+      const secretHashes = crossChainSDK.hashSecrets(generatedSecrets);
+      
+      // Step 3: Create order
+      // Create order with the quote
+      const orderInfo = await crossChainSDK.createOrder(quote, {
+        walletAddress: walletAddress,
+        hashLock: hashLock,
+        preset: PresetEnum.fast, // Use SDK enum
+        source: 'fusion-ui',
+        secretHashes: secretHashes,
+        nonce: BigInt(Date.now())
+      });
+      
+      setCurrentOrderHash(orderInfo.hash);
+      console.log('📝 Order created:', orderInfo.hash);
+      
+      // Step 4: Submit order
+      await crossChainSDK.submitOrder(
+        quote.srcChainId,
+        orderInfo.order,
+        orderInfo.quoteId,
+        secretHashes
+      );
+      
+      console.log('📤 Order submitted successfully');
+      
+      // Step 5: Wait for completion
+      const finalStatus = await crossChainSDK.waitForOrderCompletion(
+        orderInfo.hash,
+        generatedSecrets,
+        (status) => {
+          setSwapStatus(status);
+          console.log('📊 Order status update:', status);
+        }
+      );
+      
+      setSwapStatus(finalStatus.status);
+      console.log('🏁 Swap completed with status:', finalStatus.status);
+      
+      // Reset UI after successful swap
+      if (finalStatus.status === OrderStatus.Executed) {
+        setIsQuoted(false);
+        setPayAmount('');
+        setReceiveAmount('0');
+        alert('Swap completed successfully!');
+      }
+      
+    } catch (error) {
+      console.error('❌ Swap failed:', error);
+      alert('Swap failed. Please try again.');
+    } finally {
+      setIsProcessingSwap(false);
+    }
   };
 
   const switchTokens = () => {
@@ -150,6 +264,32 @@ const SwapInterface: React.FC = () => {
           </div>
         )}
 
+        {/* Swap Status Display */}
+        {(isProcessingSwap || swapStatus) && (
+          <div className="bg-blue-800/30 border border-blue-700/50 rounded-xl p-4 mb-4">
+            <div className="flex items-center space-x-3">
+              {isProcessingSwap ? (
+                <Loader className="w-5 h-5 text-blue-400 animate-spin" />
+              ) : swapStatus === OrderStatus.Executed ? (
+                <CheckCircle className="w-5 h-5 text-green-400" />
+              ) : (
+                <Clock className="w-5 h-5 text-yellow-400" />
+              )}
+              <div>
+                <div className="text-white font-medium">
+                  {isProcessingSwap ? 'Processing Swap...' : `Status: ${swapStatus}`}
+                </div>
+                <div className="text-gray-400 text-sm">
+                  {isProcessingSwap 
+                    ? 'Creating order and submitting to cross-chain protocol'
+                    : currentOrderHash && `Order: ${currentOrderHash.slice(0, 10)}...`
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Quote Info */}
         {isQuoted && (
           <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-3 mb-4">
@@ -219,7 +359,7 @@ const SwapInterface: React.FC = () => {
                 placeholder="0"
                 className="bg-transparent text-white text-3xl font-medium text-right outline-none w-40"
               />
-              <div className="text-gray-400 text-base">{payToken.balance}</div>
+              <div className="text-gray-400 text-base">Balance: --</div>
             </div>
           </div>
         </div>
@@ -297,10 +437,24 @@ const SwapInterface: React.FC = () => {
         <div className="space-y-3">
           <button
             onClick={isQuoted ? handleSwap : handleGetQuote}
-            disabled={!payAmount || !receiveToken}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-lg transition-colors"
+            disabled={!payAmount || !receiveToken || isLoadingQuote || isProcessingSwap}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-lg transition-colors flex items-center justify-center space-x-2"
           >
-            {isQuoted ? 'Confirm Swap' : 'Get Quote'}
+            {isLoadingQuote ? (
+              <>
+                <Loader className="w-5 h-5 animate-spin" />
+                <span>Getting Quote...</span>
+              </>
+            ) : isProcessingSwap ? (
+              <>
+                <Loader className="w-5 h-5 animate-spin" />
+                <span>Processing Swap...</span>
+              </>
+            ) : isQuoted ? (
+              <span>Confirm Swap</span>
+            ) : (
+              <span>Get Quote</span>
+            )}
           </button>
           
           {!payAmount && (
