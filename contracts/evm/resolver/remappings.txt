@@ -1,0 +1,5 @@
+@1inch/limit-order-protocol-contract/=lib/cross-chain-swap/lib/limit-order-protocol/
+@1inch/solidity-utils/=lib/cross-chain-swap/lib/solidity-utils/
+openzeppelin-contracts/=lib/cross-chain-swap/lib/openzeppelin-contracts/
+
+cross-chain-swap/=lib/cross-chain-swap/contracts
