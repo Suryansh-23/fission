@@ -27,6 +27,10 @@ export class QuoterApi {
             return Quote.fromSolanaQuote(params, res)
         }
 
+        if (params.isSuiRequest()) {
+            return Quote.fromSuiQuote(params, res)
+        }
+
         throw new Error('unknown chain request')
     }
 
@@ -52,6 +56,10 @@ export class QuoterApi {
 
         if (params.isSolanaRequest()) {
             return Quote.fromSolanaQuote(params, res)
+        }
+
+        if (params.isSuiRequest()) {
+            return Quote.fromSuiQuote(params, res)
         }
 
         throw new Error('unknown chain request')

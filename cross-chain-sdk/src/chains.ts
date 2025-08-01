@@ -42,8 +42,12 @@ type UnsupportedChain = Exclude<
 >
 
 export type SupportedChain = Exclude<NetworkEnum, UnsupportedChain>
-export type EvmChain = Exclude<SupportedChain, NetworkEnum.SOLANA>
+export type EvmChain = Exclude<
+    SupportedChain,
+    NetworkEnum.SOLANA | NetworkEnum.SUI
+>
 export type SolanaChain = NetworkEnum.SOLANA
+export type SuiChain = NetworkEnum.SUI
 
 export const isSupportedChain = (chain: unknown): chain is SupportedChain =>
     SupportedChains.includes(chain as number)
@@ -51,10 +55,15 @@ export const isSupportedChain = (chain: unknown): chain is SupportedChain =>
 export const isEvm = (chain: SupportedChain): chain is EvmChain => {
     return (
         SupportedChains.includes(chain as number) &&
-        chain !== NetworkEnum.SOLANA
+        chain !== NetworkEnum.SOLANA &&
+        chain !== NetworkEnum.SUI
     )
 }
 
 export const isSolana = (chain: SupportedChain): chain is SolanaChain => {
     return chain === NetworkEnum.SOLANA
+}
+
+export const isSui = (chain: SupportedChain): chain is SuiChain => {
+    return chain === NetworkEnum.SUI
 }

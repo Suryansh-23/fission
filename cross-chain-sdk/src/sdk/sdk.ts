@@ -111,6 +111,12 @@ export class SDK {
             return this.api.getQuote(req)
         }
 
+        if (QuoterRequest.isSuiRequest(quoteParams)) {
+            const req = QuoterRequest.forSui(quoteParams)
+
+            return this.api.getQuote(req)
+        }
+
         throw new Error('unknown request src chain')
     }
 

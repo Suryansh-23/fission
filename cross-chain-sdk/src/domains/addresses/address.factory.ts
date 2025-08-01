@@ -1,7 +1,8 @@
 import {EvmAddress} from './evm-address'
 import {SolanaAddress} from './solana-address'
+import {SuiAddress} from './sui-address'
 import {AddressComplement} from './address-complement'
-import {isEvm, SupportedChain} from '../../chains'
+import {isEvm, isSui, SupportedChain} from '../../chains'
 import {AddressForChain} from '../../type-utils'
 
 export function createAddress<Chain extends SupportedChain>(
@@ -14,6 +15,19 @@ export function createAddress<Chain extends SupportedChain>(
         return EvmAddress.fromUnknown(address) as AddressForChain<Chain>
     }
 
+    if (isSui(chainId)) {
+        if (complement) {
+            const evm = EvmAddress.fromUnknown(address)
+            return SuiAddress.fromParts([
+                complement,
+                evm
+            ]) as AddressForChain<Chain>
+        }
+
+        return SuiAddress.fromUnknown(address) as AddressForChain<Chain>
+    }
+
+    // Solana
     if (complement) {
         const evm = EvmAddress.fromUnknown(address)
 

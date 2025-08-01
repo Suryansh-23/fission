@@ -2,7 +2,7 @@ import {UINT_40_MAX} from '@1inch/byte-utils'
 import {randBigInt} from '@1inch/fusion-sdk'
 import assert from 'assert'
 import {CrossChainOrderParamsData, Presets} from './types'
-import {EvmAddress, SolanaAddress} from '../../../domains/addresses'
+import {EvmAddress, SolanaAddress, SuiAddress} from '../../../domains/addresses'
 import {TimeLocks} from '../../../domains/time-locks'
 import {Cost, PresetEnum, QuoterResponse, TimeLocksRaw} from '../types'
 import {Preset} from '../preset'
@@ -12,7 +12,9 @@ import {
     EvmChain,
     isEvm,
     isSolana,
+    isSui,
     SolanaChain,
+    SuiChain,
     SupportedChain
 } from '../../../chains'
 import {AuctionWhitelistItem} from '../../../cross-chain-order/evm/types'
@@ -66,9 +68,16 @@ export class Quote<
                 : undefined
         }
 
-        const dstEscrowFactory = isEvm(request.dstChain)
-            ? EvmAddress.fromString(response.dstEscrowFactory)
-            : SolanaAddress.fromString(response.dstEscrowFactory)
+        let dstEscrowFactory: AddressForChain<any>
+        if (isEvm(request.dstChain)) {
+            dstEscrowFactory = EvmAddress.fromString(response.dstEscrowFactory)
+        } else if (isSolana(request.dstChain)) {
+            dstEscrowFactory = SolanaAddress.fromString(
+                response.dstEscrowFactory
+            )
+        } else {
+            dstEscrowFactory = SuiAddress.fromString(response.dstEscrowFactory)
+        }
 
         return new Quote<EvmChain>(
             request,
@@ -102,9 +111,16 @@ export class Quote<
                 : undefined
         }
 
-        const dstEscrowFactory = isEvm(request.dstChain)
-            ? EvmAddress.fromString(response.dstEscrowFactory)
-            : SolanaAddress.fromString(response.dstEscrowFactory)
+        let dstEscrowFactory: AddressForChain<any>
+        if (isEvm(request.dstChain)) {
+            dstEscrowFactory = EvmAddress.fromString(response.dstEscrowFactory)
+        } else if (isSolana(request.dstChain)) {
+            dstEscrowFactory = SolanaAddress.fromString(
+                response.dstEscrowFactory
+            )
+        } else {
+            dstEscrowFactory = SuiAddress.fromString(response.dstEscrowFactory)
+        }
 
         return new Quote<SolanaChain>(
             request,
@@ -125,6 +141,43 @@ export class Quote<
         )
     }
 
+    static fromSuiQuote(
+        request: QuoterRequest<SuiChain>,
+        response: QuoterResponse
+    ): Quote<SuiChain> {
+        const presets = {
+            [PresetEnum.fast]: new Preset(response.presets.fast),
+            [PresetEnum.medium]: new Preset(response.presets.medium),
+            [PresetEnum.slow]: new Preset(response.presets.slow),
+            [PresetEnum.custom]: response.presets.custom
+                ? new Preset(response.presets.custom)
+                : undefined
+        }
+
+        const dstEscrowFactory = isEvm(request.dstChain)
+            ? EvmAddress.fromString(response.dstEscrowFactory)
+            : isSui(request.dstChain)
+              ? SuiAddress.fromString(response.dstEscrowFactory)
+              : SolanaAddress.fromString(response.dstEscrowFactory)
+
+        return new Quote<SuiChain>(
+            request,
+            response.quoteId,
+            BigInt(response.srcTokenAmount),
+            BigInt(response.dstTokenAmount),
+            presets,
+            SuiAddress.fromString(response.srcEscrowFactory),
+            dstEscrowFactory,
+            response.timeLocks,
+            BigInt(response.srcSafetyDeposit),
+            BigInt(response.dstSafetyDeposit),
+            [], // Sui doesn't use whitelist like EVM
+            response.recommendedPreset,
+            response.prices,
+            response.volume,
+            response.autoK
+        )
+    }
     createEvmOrder(params: CrossChainOrderParamsData): EvmCrossChainOrder {
         assert(this.isEvmQuote(), 'cannot create non evm order')
 
@@ -205,6 +258,10 @@ export class Quote<
 
     isSolanaQuote(): this is Quote<SolanaChain> {
         return isSolana(this.params.srcChain)
+    }
+
+    isSuiQuote(): this is Quote<SuiChain> {
+        return isSui(this.params.srcChain)
     }
 
     getPreset(type = this.recommendedPreset): Preset {

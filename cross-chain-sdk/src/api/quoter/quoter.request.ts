@@ -5,10 +5,17 @@ import {
     EvmChain,
     isEvm,
     isSolana,
+    isSui,
     SolanaChain,
+    SuiChain,
     SupportedChain
 } from '../../chains'
-import {createAddress, EvmAddress, SolanaAddress} from '../../domains'
+import {
+    createAddress,
+    EvmAddress,
+    SolanaAddress,
+    SuiAddress
+} from '../../domains'
 import type {AddressForChain} from '../../type-utils'
 
 export class QuoterRequest<
@@ -48,6 +55,12 @@ export class QuoterRequest<
         params: QuoterRequestParams
     ): params is QuoterRequestParams<SolanaChain> {
         return isSolana(params.srcChain)
+    }
+
+    static isSuiRequest(
+        params: QuoterRequestParams
+    ): params is QuoterRequestParams<SuiChain> {
+        return isSui(params.srcChain)
     }
 
     static forEVM(
@@ -124,12 +137,49 @@ export class QuoterRequest<
         )
     }
 
+    static forSui(
+        params: QuoterRequestParams<SuiChain>
+    ): QuoterRequest<SuiChain> {
+        assert(
+            isSui(params.srcChain),
+            'cannot use non sui quote request for srcChain'
+        )
+
+        assert(
+            isValidAmount(params.amount),
+            `${params.amount} is invalid amount`
+        )
+
+        const srcToken = SuiAddress.fromString(params.srcTokenAddress)
+        const dstToken = createAddress(params.dstTokenAddress, params.dstChain)
+
+        // Sui-specific validation: ensure we're not trying to swap the zero address
+        assert(!srcToken.isZero(), 'cannot swap zero address as source token')
+
+        return new QuoterRequest<SuiChain>(
+            params.srcChain,
+            params.dstChain,
+            srcToken,
+            dstToken,
+            BigInt(params.amount),
+            SuiAddress.fromString(params.walletAddress),
+            params.enableEstimate,
+            params.permit,
+            params.fee,
+            params.source,
+            params.isPermit2
+        )
+    }
     isEvmRequest(): this is QuoterRequest<EvmChain> {
         return isEvm(this.srcChain)
     }
 
     isSolanaRequest(): this is QuoterRequest<SolanaChain> {
         return isSolana(this.srcChain)
+    }
+
+    isSuiRequest(): this is QuoterRequest<SuiChain> {
+        return isSui(this.srcChain)
     }
 
     build(): QuoterRequestParams {
