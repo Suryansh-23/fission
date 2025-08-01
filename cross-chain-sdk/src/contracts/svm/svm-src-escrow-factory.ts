@@ -1,5 +1,5 @@
 import {BN, BorshCoder} from '@coral-xyz/anchor'
-import {Immutables} from 'domains/immutables'
+import {Immutables} from '../../domains/immutables'
 import {Instruction} from './instruction'
 import {BaseProgram} from './base-program'
 import {WhitelistContract} from './whitelist'

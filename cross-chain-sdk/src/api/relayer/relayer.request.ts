@@ -15,6 +15,8 @@ export class RelayerRequest {
 
     public readonly secretHashes?: string[]
 
+    public readonly makerPubKey?: `0x${string}`
+
     constructor(params: RelayerRequestParams) {
         this.order = params.order
         this.signature = params.signature
@@ -22,6 +24,7 @@ export class RelayerRequest {
         this.extension = params.extension
         this.srcChainId = params.srcChainId
         this.secretHashes = params.secretHashes
+        this.makerPubKey = params.makerPubKey
     }
 
     static new(params: RelayerRequestParams): RelayerRequest {

@@ -8,6 +8,7 @@ export type RelayerRequestParams = {
     quoteId: string
     extension: string
     secretHashes?: string[]
+    makerPubKey?: `0x${string}`
 }
 
 export type RelayerApiConfig = {

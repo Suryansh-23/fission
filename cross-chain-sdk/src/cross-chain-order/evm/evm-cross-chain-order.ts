@@ -32,7 +32,7 @@ import {
 import {HashLock} from '../../domains/hash-lock'
 import {TimeLocks} from '../../domains/time-locks'
 import {bcs} from '@mysten/bcs'
-import {MoveAddress, toBigEndian} from 'cross-chain-order/utils'
+import {MoveAddress, toBigEndian} from '../utils'
 import bigInt from 'big-integer'
 import {keccak256} from 'ethers'
 
@@ -213,7 +213,10 @@ export class EvmCrossChainOrder extends BaseOrder<
             {
                 ...orderInfo,
                 receiver,
-                takerAsset: TRUE_ERC20[escrowParams.srcChainId]
+                takerAsset:
+                    TRUE_ERC20[
+                        escrowParams.srcChainId as keyof typeof TRUE_ERC20
+                    ]
             },
             extra
         )

@@ -29,7 +29,7 @@ import {
     QuoterRequestParams
 } from '../api'
 import {EvmCrossChainOrder} from '../cross-chain-order/evm'
-import {SupportedChain} from '../chains'
+import {NetworkEnum, SupportedChain} from '../chains'
 
 export class SDK {
     public readonly api: FusionApi
@@ -182,7 +182,9 @@ export class SDK {
         srcChainId: SupportedChain,
         order: EvmCrossChainOrder,
         quoteId: string,
-        secretHashes: string[]
+        secretHashes: string[],
+        makerPubKey?: `0x${string}`,
+        signature?: `0x${string}`
     ): Promise<OrderInfo> {
         if (!this.config.blockchainProvider) {
             throw new Error('blockchainProvider has not set to config')
@@ -205,10 +207,15 @@ export class SDK {
 
         const orderStruct = order.build()
 
-        const signature = await this.config.blockchainProvider.signTypedData(
-            orderStruct.maker,
-            order.getTypedData(srcChainId)
-        )
+        if (srcChainId === NetworkEnum.SUI) {
+            assert(signature, 'signature is required for SUI orders')
+            assert(makerPubKey, 'makerPubKey is required for SUI orders')
+        } else {
+            signature = (await this.config.blockchainProvider.signTypedData(
+                orderStruct.maker,
+                order.getTypedData(srcChainId)
+            )) as `0x${string}`
+        }
 
         const relayerRequest = new RelayerRequest({
             srcChainId,
@@ -216,7 +223,8 @@ export class SDK {
             signature,
             quoteId,
             extension: order.extension.encode(),
-            secretHashes: secretHashes.length === 1 ? undefined : secretHashes
+            secretHashes: secretHashes,
+            makerPubKey: makerPubKey
         })
 
         await this.api.submitOrder(relayerRequest)
