@@ -7,6 +7,7 @@ import (
 	"relayer/internal/common"
 	"relayer/internal/hash"
 	"relayer/internal/manager"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -67,6 +68,7 @@ func buildQuoteRequestParams(base string, params common.QuoteRequestParams) (str
 
 func (s *APIServer) GetQuote(c *gin.Context) {
 	s.logger.Println()
+	defer s.logger.Println()
 
 	queryParams := common.QuoteRequestParams{
 		SrcChain:        c.Query("srcChain"),
@@ -121,11 +123,12 @@ func (s *APIServer) GetQuote(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, quoteResponse)
-	s.logger.Println()
 }
 
 func (s *APIServer) SubmitOrder(c *gin.Context) {
 	s.logger.Println()
+	defer s.logger.Println()
+
 	body := c.Request.Body
 	defer body.Close()
 
@@ -174,14 +177,16 @@ func (s *APIServer) SubmitOrder(c *gin.Context) {
 		OrderFills: &common.ReadyToAcceptSecretFills{
 			Fills: make([]common.ReadyToAcceptSecretFill, 0),
 		},
+		OrderMutMutex: new(sync.Mutex),
 	})
 
 	s.logger.Printf("Order broadcasted @ ID: %s", order.QuoteID)
-	s.logger.Println()
 }
 
 func (s *APIServer) SubmitSecret(c *gin.Context) {
 	s.logger.Println()
+	defer s.logger.Println()
+
 	body := c.Request.Body
 	defer body.Close()
 
@@ -198,16 +203,19 @@ func (s *APIServer) SubmitSecret(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to handle secret event"})
 		return
 	}
-
-	s.logger.Println()
 }
 
 func (s *APIServer) GetOrderStatus(c *gin.Context) {
+	s.logger.Println()
+	defer s.logger.Println()
+
 	orderHash := c.Param("orderHash")
 	if orderHash == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Order hash is required"})
 		return
 	}
+
+	s.logger.Printf("Fetching order status for hash: %s", orderHash)
 
 	orderEntry, err := s.manager.GetOrder(orderHash)
 	if err != nil {
@@ -225,6 +233,9 @@ func (s *APIServer) GetOrderStatus(c *gin.Context) {
 }
 
 func (s *APIServer) GetReadyToAcceptSecretFills(c *gin.Context) {
+	s.logger.Println()
+	defer s.logger.Println()
+
 	orderHash := c.Param("orderHash")
 	if orderHash == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Order hash is required"})
