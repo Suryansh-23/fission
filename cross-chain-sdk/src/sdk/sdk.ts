@@ -8,7 +8,11 @@ import {
     QuoteCustomPresetParams,
     CrossChainSDKConfigParams
 } from './types'
-import {EvmAddress as Address} from '../domains/addresses'
+import {
+    EvmAddress as Address,
+    EvmAddress,
+    SuiAddress
+} from '../domains/addresses'
 import {
     FusionApi,
     Quote,
@@ -30,6 +34,7 @@ import {
 } from '../api'
 import {EvmCrossChainOrder} from '../cross-chain-order/evm'
 import {NetworkEnum, SupportedChain} from '../chains'
+import {AddressLike} from 'ethers'
 
 export class SDK {
     public readonly api: FusionApi
@@ -170,7 +175,9 @@ export class SDK {
         const order = quote.createEvmOrder({
             hashLock: params.hashLock,
             receiver: params.receiver
-                ? Address.fromString(params.receiver)
+                ? quote.dstChainId === NetworkEnum.SUI
+                    ? SuiAddress.fromUnknown(params.receiver)
+                    : EvmAddress.fromString(params.receiver)
                 : undefined,
             preset: params.preset,
             nonce: params.nonce,
