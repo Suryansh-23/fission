@@ -126,6 +126,7 @@ public fun create_new<T: store>(
 
     let type_name = type_name::get<T>();
     let maker = order::get_maker(order);
+    let receiver = order::get_receiver(order);
     let order_making_amount = order::get_making_amount(order);
     let order_taking_amount = order::get_taking_amount(order);
     let remaining_making_amount = order::get_remaining_amount(order);
@@ -201,11 +202,16 @@ public fun create_new<T: store>(
 
     let escrow_id = object::uid_to_inner(&escrow.id);
 
+    let mut actual_receiver = maker;
+    if (receiver != @0x0) {
+        actual_receiver = receiver;
+    };
+
     event::emit(SrcEscrowCreated {
         id: escrow_id,
         order_hash,
         hashlock: hashlock,
-        maker,
+        maker: actual_receiver,
         taker: sender,
         making_amount: actual_making_amount,
         taking_amount: taking_amount,
