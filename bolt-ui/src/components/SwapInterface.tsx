@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ArrowUpDown, RotateCcw } from 'lucide-react';
+import { ChevronDown, ArrowUpDown, Settings } from 'lucide-react';
 
 interface Token {
   symbol: string;
@@ -35,6 +35,8 @@ const SwapInterface: React.FC = () => {
   const [singleFill, setSingleFill] = useState<boolean>(true);
   const [showPayTokens, setShowPayTokens] = useState<boolean>(false);
   const [showReceiveTokens, setShowReceiveTokens] = useState<boolean>(false);
+  const [slippage, setSlippage] = useState<string>('0.5');
+  const [showSettings, setShowSettings] = useState<boolean>(false);
 
   const handleGetQuote = () => {
     if (payAmount && receiveToken) {
@@ -66,9 +68,9 @@ const SwapInterface: React.FC = () => {
 
   return (
     <div className="w-full max-w-lg mx-auto">
-      <div className="bg-gray-900/50 backdrop-blur-sm border border-gray-800/50 rounded-2xl p-8">
+      <div className="bg-gray-900/50 backdrop-blur-sm border border-gray-800/50 rounded-2xl p-6">
         {/* Header with Toggle */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-4">
             <h2 className="text-white text-2xl font-semibold">Swap</h2>
           </div>
@@ -92,14 +94,82 @@ const SwapInterface: React.FC = () => {
               <span className="text-gray-400 text-base">Multi Fill</span>
             </div>
             
-            <button className="p-2 text-gray-400 hover:text-white transition-colors">
-              <RotateCcw className="w-5 h-5" />
+            <button 
+              className="p-2 text-gray-400 hover:text-white transition-colors"
+              onClick={() => setShowSettings(!showSettings)}
+            >
+              <Settings className="w-5 h-5" />
             </button>
           </div>
         </div>
 
+        {/* Settings Panel */}
+        {showSettings && (
+          <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4 mb-4">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-white text-base font-medium">Transaction Settings</span>
+              <button 
+                onClick={() => setShowSettings(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-gray-400 text-sm mb-2 block">Slippage Tolerance</label>
+                <div className="flex items-center space-x-2">
+                  {['0.1', '0.5', '1.0'].map((value) => (
+                    <button
+                      key={value}
+                      onClick={() => setSlippage(value)}
+                      className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                        slippage === value 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-gray-700/50 text-gray-300 hover:bg-gray-700'
+                      }`}
+                    >
+                      {value}%
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    value={slippage}
+                    onChange={(e) => setSlippage(e.target.value)}
+                    className="bg-gray-700/50 text-white px-3 py-2 rounded-lg text-sm w-20 outline-none"
+                    placeholder="Custom"
+                    step="0.1"
+                    min="0.1"
+                    max="50"
+                  />
+                  <span className="text-gray-400 text-sm">%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Quote Info */}
+        {isQuoted && (
+          <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-3 mb-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-400">Rate</span>
+              <span className="text-white">1 {payToken.symbol} = {(parseFloat(receiveAmount) / parseFloat(payAmount)).toFixed(6)} {receiveToken?.symbol}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm mt-2">
+              <span className="text-gray-400">Slippage Tolerance</span>
+              <span className="text-white">{slippage}%</span>
+            </div>
+            <div className="flex items-center justify-between text-sm mt-2">
+              <span className="text-gray-400">Network Fee</span>
+              <span className="text-white">~$0.50</span>
+            </div>
+          </div>
+        )}
+
         {/* You Pay Section */}
-        <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-5 mb-3">
+        <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4 mb-2">
           <div className="flex items-center justify-between mb-4">
             <span className="text-gray-400 text-base font-medium">You pay</span>
             <span className="text-gray-400 text-base">Chain: {payChain.name}</span>
@@ -165,7 +235,7 @@ const SwapInterface: React.FC = () => {
         </div>
 
         {/* You Receive Section */}
-        <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-5 mb-8">
+        <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4 mb-6">
           <div className="flex items-center justify-between mb-4">
             <span className="text-gray-400 text-base font-medium">You receive</span>
             <span className="text-gray-400 text-base">Chain: {receiveChain.name}</span>
@@ -224,13 +294,33 @@ const SwapInterface: React.FC = () => {
         </div>
 
         {/* Action Button */}
-        <button
-          onClick={isQuoted ? handleSwap : handleGetQuote}
-          disabled={!payAmount || !receiveToken}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-lg transition-colors"
-        >
-          {isQuoted ? 'Swap' : 'Get Quote'}
-        </button>
+        <div className="space-y-3">
+          <button
+            onClick={isQuoted ? handleSwap : handleGetQuote}
+            disabled={!payAmount || !receiveToken}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-lg transition-colors"
+          >
+            {isQuoted ? 'Confirm Swap' : 'Get Quote'}
+          </button>
+          
+          {!payAmount && (
+            <p className="text-gray-400 text-sm text-center">Enter an amount to continue</p>
+          )}
+          
+          {payAmount && !receiveToken && (
+            <p className="text-gray-400 text-sm text-center">Select a token to receive</p>
+          )}
+          
+          {isQuoted && (
+            <p className="text-gray-400 text-xs text-center">
+              Output is estimated. You will receive at least{' '}
+              <span className="text-white">
+                {(parseFloat(receiveAmount) * (1 - parseFloat(slippage) / 100)).toFixed(6)} {receiveToken?.symbol}
+              </span>{' '}
+              or the transaction will revert.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

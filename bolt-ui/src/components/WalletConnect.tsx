@@ -1,57 +1,44 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useCurrentAccount, useConnectWallet, useDisconnectWallet, useWallets } from '@mysten/dapp-kit';
 
 const WalletConnect: React.FC = () => {
   const currentAccount = useCurrentAccount();
-  const { mutate: connect, isPending, error } = useConnectWallet();
+  const { mutate: connect, isPending } = useConnectWallet();
   const { mutate: disconnect } = useDisconnectWallet();
   const wallets = useWallets();
   const [isConnecting, setIsConnecting] = useState(false);
   const [showWalletList, setShowWalletList] = useState(false);
 
-  // Debug logs
-  useEffect(() => {
-    console.log('🔍 Debug Info:');
-    console.log('Available wallets:', wallets);
-    console.log('Current account:', currentAccount);
-    console.log('useConnectWallet error:', error);
-    console.log('useConnectWallet isPending:', isPending);
-  }, [wallets, currentAccount, error, isPending]);
-
   const handleConnect = async (selectedWallet?: any) => {
-    console.log('🚀 Connect button clicked');
     setIsConnecting(true);
     
     try {
       const walletToConnect = selectedWallet || wallets[0];
       
-      console.log('Attempting to connect to wallet:', walletToConnect);
-      
       if (!walletToConnect) {
-        console.error('❌ No wallet available to connect');
-        alert('No wallets detected. Please install a Sui wallet extension like Sui Wallet.');
+        console.error('No wallet available to connect');
+        alert('No Sui wallets detected. Please install a Sui wallet extension.');
         setIsConnecting(false);
         return;
       }
 
-      console.log('🔗 Calling connect mutation...');
       connect(
         { wallet: walletToConnect },
         {
-          onSuccess: (result) => {
-            console.log('✅ Wallet connected successfully:', result);
+          onSuccess: () => {
+            console.log('Sui wallet connected successfully');
             setIsConnecting(false);
             setShowWalletList(false);
           },
           onError: (error) => {
-            console.error('❌ Failed to connect wallet:', error);
+            console.error('Failed to connect Sui wallet:', error);
             alert(`Failed to connect: ${error.message}`);
             setIsConnecting(false);
           }
         }
       );
     } catch (error) {
-      console.error('💥 Error during connection attempt:', error);
+      console.error('Error during Sui wallet connection:', error);
       setIsConnecting(false);
     }
   };
@@ -116,28 +103,13 @@ const WalletConnect: React.FC = () => {
   }
 
   return (
-    <div className="flex items-center space-x-2">
-      <button
-        onClick={() => wallets.length > 1 ? setShowWalletList(true) : handleConnect()}
-        disabled={isConnecting || isPending}
-        className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-2 rounded-xl font-medium transition-colors text-sm"
-      >
-        {isConnecting || isPending ? 'Connecting...' : 'Connect Wallet'}
-      </button>
-      
-      {/* Debug info button */}
-      <button
-        onClick={() => {
-          console.log('🔍 Manual Debug Info:');
-          console.log('Wallets available:', wallets.length);
-          console.log('Wallet details:', wallets);
-        }}
-        className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-xl font-medium transition-colors text-xs"
-        title="Debug Info"
-      >
-        Debug
-      </button>
-    </div>
+    <button
+      onClick={() => wallets.length > 1 ? setShowWalletList(true) : handleConnect()}
+      disabled={isConnecting || isPending}
+      className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-2 rounded-xl font-medium transition-colors text-sm"
+    >
+      {isConnecting || isPending ? 'Connecting...' : 'Connect Sui Wallet'}
+    </button>
   );
 };
 

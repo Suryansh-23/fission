@@ -5,6 +5,9 @@
 /* Import Mysten Dapp Kit styles */
 @import '@mysten/dapp-kit/dist/index.css';
 
+/* Import Rainbow Kit styles */
+@import '@rainbow-me/rainbowkit/styles.css';
+
 /* Custom styling for wallet connect button */
 .wallet-connect-wrapper button {
   background-color: #2563eb !important;
