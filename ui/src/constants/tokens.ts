@@ -17,11 +17,11 @@ export const EVM_TOKENS: Record<string, Record<string, TokenInfo>> = {
   // Ethereum Mainnet (1)
   "1": {
     ETH: {
-      symbol: "ETH",
-      name: "Ether",
+      symbol: "WETH",
+      name: "Wrapped Ether",
       icon: "🔵",
       decimals: 18,
-      address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", 
+      address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", 
       chainId: 1,
     },
     USDC: {
@@ -80,16 +80,16 @@ export const SUPPORTED_CHAINS: Record<string, ChainInfo> = {
     symbol: "ETH",
     chainId: 1,
     networkEnum: NetworkEnum.ETHEREUM, // Using SDK NetworkEnum
-    rpcUrl: "https://ethereum-rpc.publicnode.com",
+    rpcUrl: "https://virtual.mainnet.eu.rpc.tenderly.co/7376d706-10d6-4d07-a8fd-c16c404805cc",
     blockExplorer: "https://etherscan.io",
     nativeCurrency: EVM_TOKENS["1"].ETH,
   },
   sui: {
     name: "Sui",
     symbol: "SUI",
-    chainId: 0, // Sui doesn't use EVM chainId
+    chainId: 101, // Custom Chain ID for Sui
     networkEnum: 999, // TODO: Map to SDK NetworkEnum for Sui
-    rpcUrl: "https://fullnode.devnet.sui.io:443",
+    rpcUrl: "https://fullnode.testnet.sui.io:443",
     blockExplorer: "https://suiexplorer.com",
     nativeCurrency: SUI_TOKENS.SUI,
   },
