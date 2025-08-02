@@ -5,6 +5,7 @@ use fusion_plus::immutables::{Self, Immutables};
 use fusion_plus::order::Order;
 use fusion_plus::src_escrow::{Self, SrcEscrow};
 use std::type_name;
+use sui::clock::Clock;
 use sui::coin::{Self, Coin};
 use sui::sui::SUI;
 
@@ -21,6 +22,7 @@ fun init(ctx: &mut TxContext) {
 }
 
 public entry fun create_src_escrow<T: store>(
+    clock: &Clock,
     _cap: &ResolverCap,
     order: &mut Order<T>,
     deposit_amount: u64,
@@ -39,7 +41,7 @@ public entry fun create_src_escrow<T: store>(
     ctx: &mut TxContext,
 ) {
     let timelocks = immutables::new_src_timelocks(
-        ctx.epoch_timestamp_ms(),
+        clock.timestamp_ms(),
         src_withdrawal_timestamp,
         src_public_withdrawal_timestamp,
         src_cancellation_timestamp,
@@ -60,6 +62,7 @@ public entry fun create_src_escrow<T: store>(
     );
 
     src_escrow::create_new(
+        clock,
         merkle_data,
         order,
         signature_data,
@@ -71,6 +74,7 @@ public entry fun create_src_escrow<T: store>(
 }
 
 public entry fun create_dst_escrow<T: store>(
+    clock: &Clock,
     _cap: &ResolverCap,
     order_hash: vector<u8>,
     hashlock: vector<u8>,
@@ -85,7 +89,7 @@ public entry fun create_dst_escrow<T: store>(
     ctx: &mut TxContext,
 ) {
     let timelocks = immutables::new_dst_timelocks(
-        ctx.epoch_timestamp_ms(),
+        clock.timestamp_ms(),
         dst_withdrawal_timestamp,
         dst_public_withdrawal_timestamp,
         dst_cancellation_timestamp,
@@ -106,6 +110,7 @@ public entry fun create_dst_escrow<T: store>(
     );
 
     dst_escrow::create_new(
+        clock,
         immutables,
         src_cancellation_timestamp,
         deposit,
@@ -116,75 +121,82 @@ public entry fun create_dst_escrow<T: store>(
 
 // Main entry point for withdrawing from source escrows
 public entry fun withdraw_src<T: store>(
+    clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut SrcEscrow<T>,
     secret: vector<u8>,
     target: address,
     ctx: &mut TxContext,
 ) {
-    src_escrow::withdraw_to(escrow, secret, target, ctx);
+    src_escrow::withdraw_to(clock, escrow, secret, target, ctx);
 }
 
 // Main entry point for withdrawing from destination escrows
 public entry fun withdraw_dst<T: store>(
+    clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut DstEscrow<T>,
     secret: vector<u8>,
     ctx: &mut TxContext,
 ) {
     // Delegate to the dst_escrow module's withdraw function
-    let safety_deposit = dst_escrow::withdraw(escrow, secret, ctx);
+    let safety_deposit = dst_escrow::withdraw(clock, escrow, secret, ctx);
     transfer::public_transfer(safety_deposit, tx_context::sender(ctx));
 }
 
 // Main entry point for public withdrawal from source escrows
 public entry fun public_withdraw_src<T: store>(
+    clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut SrcEscrow<T>,
     secret: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    src_escrow::public_withdraw(escrow, secret, ctx);
+    src_escrow::public_withdraw(clock, escrow, secret, ctx);
 }
 
 // Main entry point for public withdrawal from destination escrows
 public entry fun public_withdraw_dst<T: store>(
+    clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut DstEscrow<T>,
     secret: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    let safety_deposit = dst_escrow::public_withdraw(escrow, secret, ctx);
+    let safety_deposit = dst_escrow::public_withdraw(clock, escrow, secret, ctx);
     transfer::public_transfer(safety_deposit, tx_context::sender(ctx));
 }
 
 // Main entry point for canceling source escrows
 public entry fun cancel_src<T: store>(
+    clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut SrcEscrow<T>,
     ctx: &mut TxContext,
 ) {
-    let safety_deposit = src_escrow::cancel(escrow, ctx);
+    let safety_deposit = src_escrow::cancel(clock, escrow, ctx);
     transfer::public_transfer(safety_deposit, tx_context::sender(ctx));
 }
 
 // Main entry point for canceling destination escrows
 public entry fun cancel_dst<T: store>(
+    clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut DstEscrow<T>,
     ctx: &mut TxContext,
 ) {
-    let safety_deposit = dst_escrow::cancel(escrow, ctx);
+    let safety_deposit = dst_escrow::cancel(clock, escrow, ctx);
     transfer::public_transfer(safety_deposit, tx_context::sender(ctx));
 }
 
 // Main entry point for public canceling source escrows
 public entry fun public_cancel_src<T: store>(
+    clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut SrcEscrow<T>,
     ctx: &mut TxContext,
 ) {
-    let safety_deposit = src_escrow::public_cancel(escrow, ctx);
+    let safety_deposit = src_escrow::public_cancel(clock, escrow, ctx);
     transfer::public_transfer(safety_deposit, tx_context::sender(ctx));
 }
 

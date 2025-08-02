@@ -5,6 +5,7 @@ use fusion_plus::immutables::{Self, Immutables, Timelocks};
 use fusion_plus::merkle_proof;
 use fusion_plus::order::{Self, Order};
 use std::type_name;
+use sui::clock::Clock;
 use sui::coin::{Self, Coin};
 use sui::ecdsa_k1;
 use sui::ecdsa_r1;
@@ -101,6 +102,7 @@ public struct SrcEscrow<phantom T: store> has key {
 }
 
 public fun create_new<T: store>(
+    clock: &Clock,
     merkle_data: MerkleProofData,
     order: &mut Order<T>,
     signature_data: SignatureData,
@@ -142,13 +144,14 @@ public fun create_new<T: store>(
     };
 
     let auction_details = order::get_auction_details(order);
+    let current_time = clock.timestamp_ms();
 
     let taking_amount = auction_calculator::get_taking_amount(
         order_making_amount,
         order_taking_amount,
         actual_making_amount,
         auction_details,
-        ctx.epoch_timestamp_ms(),
+        current_time,
     );
 
     let mut hashlock = merkle_data.hashlock_info;
@@ -191,7 +194,7 @@ public fun create_new<T: store>(
         timelocks,
     );
 
-    immutables::set_src_deployment_time(&mut immutables, ctx.epoch_timestamp_ms());
+    immutables::set_src_deployment_time(&mut immutables, current_time);
 
     let escrow_deposit = order::split_coins(order, actual_making_amount, ctx);
 
@@ -224,12 +227,13 @@ public fun create_new<T: store>(
 
 /// Withdraw to specific address function for taker during private withdrawal period
 public fun withdraw_to<T: store>(
+    clock: &Clock,
     escrow: &mut SrcEscrow<T>,
     secret: vector<u8>,
     target: address,
     ctx: &mut TxContext,
 ) {
-    let current_time = ctx.epoch_timestamp_ms();
+    let current_time = clock.timestamp_ms();
 
     // Check that caller is the taker
     assert!(ctx.sender() == immutables::get_taker(&escrow.immutables), EInvalidTaker);
@@ -242,11 +246,12 @@ public fun withdraw_to<T: store>(
 }
 
 public fun public_withdraw<T: store>(
+    clock: &Clock,
     escrow: &mut SrcEscrow<T>,
     secret: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    let current_time = ctx.epoch_timestamp_ms();
+    let current_time = clock.timestamp_ms();
 
     // Check timelock: after public withdrawal time and before cancellation time
     assert!(
@@ -262,8 +267,12 @@ public fun public_withdraw<T: store>(
 
 /// Cancel function for taker during private cancellation period
 #[allow(lint(self_transfer))]
-public fun cancel<T: store>(escrow: &mut SrcEscrow<T>, ctx: &mut TxContext): Coin<SUI> {
-    let current_time = ctx.epoch_timestamp_ms();
+public fun cancel<T: store>(
+    clock: &Clock,
+    escrow: &mut SrcEscrow<T>,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    let current_time = clock.timestamp_ms();
 
     // Check that caller is the taker
     assert!(ctx.sender() == immutables::get_taker(&escrow.immutables), EInvalidTaker);
@@ -279,8 +288,12 @@ public fun cancel<T: store>(escrow: &mut SrcEscrow<T>, ctx: &mut TxContext): Coi
 
 /// Public cancel function during public cancellation period (anyone can call)
 #[allow(lint(self_transfer))]
-public fun public_cancel<T: store>(escrow: &mut SrcEscrow<T>, ctx: &mut TxContext): Coin<SUI> {
-    let current_time = ctx.epoch_timestamp_ms();
+public fun public_cancel<T: store>(
+    clock: &Clock,
+    escrow: &mut SrcEscrow<T>,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    let current_time = clock.timestamp_ms();
 
     assert!(
         current_time >= immutables::get_src_public_cancellation_time(&escrow.immutables),
@@ -292,10 +305,14 @@ public fun public_cancel<T: store>(escrow: &mut SrcEscrow<T>, ctx: &mut TxContex
 
 /// Rescue function - allows recovery of funds after rescue delay period
 /// Can be called by anyone after the rescue delay has passed since deployment
-public fun rescue<T: store>(ctx: &mut TxContext, escrow: &mut SrcEscrow<T>): Coin<T> {
+public fun rescue<T: store>(
+    clock: &Clock,
+    escrow: &mut SrcEscrow<T>,
+    ctx: &mut TxContext,
+): Coin<T> {
     assert!(ctx.sender() == immutables::get_taker(&escrow.immutables), EInvalidTaker);
 
-    let current_time = ctx.epoch_timestamp_ms();
+    let current_time = clock.timestamp_ms();
     let deployment_time = immutables::get_deployment_time(&escrow.immutables);
 
     assert!(current_time >= deployment_time + RESCUE_DELAY, ERescueDelayNotMet);

@@ -3,6 +3,7 @@ module fusion_plus::dst_escrow;
 use fusion_plus::immutables::{Self, Immutables};
 use std::ascii::String;
 use std::type_name;
+use sui::clock::Clock;
 use sui::coin::{Self, Coin};
 use sui::event;
 use sui::hash;
@@ -41,6 +42,7 @@ public struct DstEscrow<phantom T: store> has key {
 }
 
 public fun create_new<T: store>(
+    clock: &Clock,
     immutables: Immutables,
     src_cancellation_timestamp: u64,
     deposit: Coin<T>,
@@ -72,7 +74,7 @@ public fun create_new<T: store>(
     let mut immutables_modified = immutables;
     immutables::set_dst_deployment_time(
         &mut immutables_modified,
-        ctx.epoch_timestamp_ms(),
+        clock.timestamp_ms(),
     );
 
     let escrow = DstEscrow<T> {
@@ -94,11 +96,12 @@ public fun create_new<T: store>(
 }
 
 public fun withdraw<T: store>(
+    clock: &Clock,
     escrow: &mut DstEscrow<T>,
     secret: vector<u8>,
     ctx: &mut TxContext,
 ): Coin<SUI> {
-    let current_time = ctx.epoch_timestamp_ms();
+    let current_time = clock.timestamp_ms();
 
     let taker = immutables::get_taker(&escrow.immutables);
     assert!(ctx.sender() == taker, ENotTaker);
@@ -113,11 +116,12 @@ public fun withdraw<T: store>(
 
 // Public withdrawal function - allows withdrawal during public period with access token
 public fun public_withdraw<T: store>(
+    clock: &Clock,
     escrow: &mut DstEscrow<T>,
     secret: vector<u8>,
     ctx: &mut TxContext,
 ): Coin<SUI> {
-    let current_time = ctx.epoch_timestamp_ms();
+    let current_time = clock.timestamp_ms();
 
     let dst_public_withdrawal_time = immutables::get_dst_public_withdrawal_time(&escrow.immutables);
     let dst_cancellation_time = immutables::get_dst_cancellation_time(&escrow.immutables);
@@ -153,8 +157,12 @@ fun withdraw_internal<T: store>(
     safety_deposit
 }
 
-public fun cancel<T: store>(escrow: &mut DstEscrow<T>, ctx: &mut TxContext): Coin<SUI> {
-    let current_time = ctx.epoch_timestamp_ms();
+public fun cancel<T: store>(
+    clock: &Clock,
+    escrow: &mut DstEscrow<T>,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    let current_time = clock.timestamp_ms();
     let sender = tx_context::sender(ctx);
 
     let taker = immutables::get_taker(&escrow.immutables);
