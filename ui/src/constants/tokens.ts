@@ -89,7 +89,7 @@ export const SUPPORTED_CHAINS: Record<string, ChainInfo> = {
     symbol: "SUI",
     chainId: 101, // Custom Chain ID for Sui
     networkEnum: 999, // TODO: Map to SDK NetworkEnum for Sui
-    rpcUrl: "https://fullnode.testnet.sui.io:443",
+    rpcUrl: "https://fullnode.mainnet.sui.io:443", // Production mainnet
     blockExplorer: "https://suiexplorer.com",
     nativeCurrency: SUI_TOKENS.SUI,
   },

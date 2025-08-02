@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, ArrowUpDown, Clock, CheckCircle, Loader } from 'lucide-react';
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { useAccount } from 'wagmi';
 import { DEFAULT_EVM_TOKENS, DEFAULT_SUI_TOKENS } from '../constants/tokens';
 import crossChainSDKInstance, { OrderStatus, PresetEnum } from '../services/crossChainSDK';
@@ -112,6 +112,7 @@ const getTokensForChain = (chainId: number): Token[] => {
 
 const SwapInterface: React.FC = () => {
   const suiAccount = useCurrentAccount();
+  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const { address: evmAddress } = useAccount();
   
   const [payChain, setPayChain] = useState<Chain>(chains[0]); // Default to Ethereum
@@ -201,6 +202,8 @@ const SwapInterface: React.FC = () => {
         srcTokenAmount: (BigInt(Math.floor(inputAmount * (10 ** payToken.decimals)))).toString(),
         dstTokenAmount: (BigInt(Math.floor(outputAmount * (10 ** receiveToken.decimals)))).toString(),
         quoteId: `mock-${Date.now()}`,
+        srcChainId: payChain.chainId,
+        dstChainId: receiveChain.chainId,
       };
       
       setQuote(mockQuote as any);
@@ -240,7 +243,22 @@ const SwapInterface: React.FC = () => {
       const secretHashes = crossChainSDKInstance.hashSecrets(generatedSecrets);
       
       // Step 3: Create order
-      // Create order with the quote
+      console.log('[SwapInterface] Creating cross-chain order...');
+      console.log('[SwapInterface] Source chain:', payChain.name, '(ID:', quote.srcChainId, ')');
+      console.log('[SwapInterface] Destination chain:', receiveChain.name, '(ID:', quote.dstChainId, ')');
+      console.log('[SwapInterface] Fill preferences - Single:', singleFill, 'Multi:', !singleFill);
+      
+      // Set fill preferences in SDK
+      console.log('[SwapInterface] Toggle state - singleFill:', singleFill);
+      console.log('[SwapInterface] UI Toggle: When singleFill is', singleFill, ', multifill should be', !singleFill);
+      console.log('[SwapInterface] Setting allowPartialFills to: true (always)');
+      console.log('[SwapInterface] Setting allowMultipleFills to:', !singleFill, '(inverse of singleFill)');
+      
+      crossChainSDKInstance.setFillPreferences({
+        allowPartialFills: true, // Always true as per requirement
+        allowMultipleFills: !singleFill // Based on toggle button: when singleFill=true, multiFills=false
+      });
+      
       const orderInfo = await crossChainSDKInstance.createOrder(quote, {
         walletAddress: walletAddress,
         hashLock: hashLock,
@@ -251,17 +269,45 @@ const SwapInterface: React.FC = () => {
       });
       
       setCurrentOrderHash(orderInfo.hash);
-      console.log('📝 Order created:', orderInfo.hash);
+      console.log('[SwapInterface] Order created successfully');
+      console.log('[SwapInterface] Order hash:', orderInfo.hash);
+      console.log('[SwapInterface] Quote ID:', orderInfo.quoteId);
       
       // Step 4: Submit order
+      console.log('[SwapInterface] Submitting order to blockchain...');
+      
+      // For Sui orders, we need to pass the EVM address as receiver and the Sui wallet for signing
+      const receiverAddress = payChain.chainId === 0 ? evmAddress : undefined;
+      const suiWallet = payChain.chainId === 0 ? { 
+        signAndExecuteTransaction: (params: any) => {
+          return new Promise((resolve, reject) => {
+            signAndExecuteTransaction(params, {
+              onSuccess: (result) => {
+                console.log('[SwapInterface] Wallet signing successful:', result);
+                resolve(result);
+              },
+              onError: (error) => {
+                console.error('[SwapInterface] Wallet signing failed:', error);
+                reject(error);
+              }
+            });
+          });
+        }
+      } : undefined;
+      
+      console.log('[SwapInterface] Sui wallet object:', suiWallet);
+      
       await crossChainSDKInstance.submitOrder(
         quote.srcChainId,
         orderInfo.order,
         orderInfo.quoteId,
-        secretHashes
+        secretHashes,
+        receiverAddress,
+        { payToken, receiveToken }, // Pass selected tokens for proper mapping
+        suiWallet // Pass connected Sui wallet for signing
       );
       
-      console.log('📤 Order submitted successfully');
+      console.log('[SwapInterface] Order submitted successfully');
       
       // Step 5: Wait for completion
       const finalStatus = await crossChainSDKInstance.waitForOrderCompletion(
@@ -324,9 +370,19 @@ const SwapInterface: React.FC = () => {
           <div className="flex items-center space-x-4">
             {/* Single/Multi Fill Toggle */}
             <div className="flex items-center space-x-3">
-              <span className="text-gray-400 text-base">Single Fill</span>
+              <span className="text-gray-400 text-base">Multi Fill</span>
               <button
-                onClick={() => setSingleFill(!singleFill)}
+                onClick={() => {
+                  const newSingleFill = !singleFill;
+                  console.log('[SwapInterface] Toggle clicked - changing singleFill from', singleFill, 'to', newSingleFill);
+                  console.log('[SwapInterface] This means allowMultipleFills will be:', !newSingleFill);
+                  if (newSingleFill) {
+                    console.log('[SwapInterface] User selected: SINGLE FILL (allowMultipleFills = false)');
+                  } else {
+                    console.log('[SwapInterface] User selected: MULTI FILL (allowMultipleFills = true)');
+                  }
+                  setSingleFill(newSingleFill);
+                }}
                 className={`w-12 h-7 rounded-full transition-colors duration-200 ${
                   singleFill ? 'bg-blue-600' : 'bg-gray-600'
                 }`}
@@ -337,7 +393,7 @@ const SwapInterface: React.FC = () => {
                   }`}
                 />
               </button>
-              <span className="text-gray-400 text-base">Multi Fill</span>
+              <span className="text-gray-400 text-base">Single Fill</span>
             </div>
           </div>
         </div>

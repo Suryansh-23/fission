@@ -5,6 +5,8 @@ interface ImportMetaEnv {
   readonly VITE_FUSION_API_URL: string
   readonly VITE_FUSION_AUTH_KEY: string
   readonly VITE_FUSION_SOURCE: string
+  readonly VITE_SUI_RPC_URL: string
+  readonly VITE_SUI_PACKAGE_ID: string
 }
 
 interface ImportMeta {

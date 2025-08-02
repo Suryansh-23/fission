@@ -12,9 +12,11 @@ const Header: React.FC = () => {
         <div className="flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-cyan-400 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">F</span>
-            </div>
+            <img
+              src="/8d9ae74ad7d5cde26bb553b7b603dca4.jpg"
+              alt="Fission Logo"
+              className="w-8 h-8 rounded-lg object-cover"
+            />
             <span className="text-white text-xl font-semibold">Fission</span>
           </div>
 
