@@ -84,6 +84,7 @@ export class OrderManager {
     // @note order stored for this resolver needs to compute this - hash lock will be the secretHash[resolverId + 1], if this is an array then store variable in stored order that partial fills is true.
     // Decode the extension from the relayer params
     const extension = Extension.decode(relayerParams.extension);
+    console.log("Decoded extension:", extension);
 
     // Convert RelayerRequestParams to EvmCrossChainOrder using SDK method
     const crossChainOrder = EvmCrossChainOrder.fromDataAndExtension(
@@ -100,7 +101,7 @@ export class OrderManager {
       dstDeployedAt: undefined,
     };
 
-    if (relayerParams.secretHashes && relayerParams.secretHashes.length > 0) {
+    if (relayerParams.secretHashes && relayerParams.secretHashes.length > 2) {
       console.log("Partial fill detected, storing secret hashes");
       storedOrderData.isPartialFill = true;
     }
@@ -112,6 +113,11 @@ export class OrderManager {
     );
 
     // TODO: this will call the executeOrder function, which will deploy the src and dst escrow function.
+    console.log(
+      `[OrderManager] Registering order:`,
+      relayerParams,
+      crossChainOrder.toJSON()
+    );
     console.log(`[OrderManager] Executing order: ${orderHash}`);
     await this.executeOrder(
       orderHash,
@@ -252,6 +258,20 @@ export class OrderManager {
             .setAmountMode(AmountMode.maker)
             .setAmountThreshold(crossChainOrder.takingAmount);
 
+          console.log("[EXECUTE ORDER] Taker Traits:");
+          console.log("Extensions:", crossChainOrder.extension);
+          console.log(
+            "Interactions:",
+            escrowFactory.getMultipleFillInteraction(
+              proof,
+              idx,
+              specificSecretHash
+            )
+          );
+          console.log("Maker:", AmountMode.maker);
+          console.log("Amount Threshold:", crossChainOrder.takingAmount);
+          console.log(takerTraits);
+
           console.log(
             `Created TakerTraits for multiple fills with index ${idx}, secret hash: ${specificSecretHash.substring(
               0,
@@ -275,13 +295,21 @@ export class OrderManager {
             throw new Error("No secret hash available for single fill order");
           }
 
-          hashLock = HashLock.forSingleFill(secretHash);
+          hashLock = HashLock.fromString(secretHash);
+          console.log(`Created hashlock for single fill: ${secretHash}`);
 
           // Build TakerTraits for single fill (no interaction needed)
           takerTraits = TakerTraits.default()
             .setExtension(crossChainOrder.extension)
             .setAmountMode(AmountMode.maker)
             .setAmountThreshold(crossChainOrder.takingAmount);
+
+          console.log("[EXECUTE ORDER] Taker Traits:");
+          console.log("Extensions:", crossChainOrder.extension);
+          console.log("Maker:", AmountMode.maker);
+          console.log("Amount Threshold:", crossChainOrder.takingAmount);
+          console.log("Maker Amount Flag:", takerTraits.getAmountMode());
+          console.log(takerTraits);
 
           console.log(
             `Created TakerTraits for single fill with secret hash: ${secretHash.substring(

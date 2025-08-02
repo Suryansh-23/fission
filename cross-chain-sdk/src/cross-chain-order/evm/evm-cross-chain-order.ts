@@ -171,8 +171,13 @@ export class EvmCrossChainOrder extends BaseOrder<
                 address: i.address.inner,
                 allowFrom: i.allowFrom
             })),
-            resolvingStartTime: details.resolvingStartTime ?? BigInt(now())
+            resolvingStartTime: 0n
         })
+        console.log(
+            'post interaction data',
+            postInteractionData,
+            postInteractionData.encode()
+        )
 
         if (!isEvm(escrowParams.dstChainId) && !orderInfo.receiver) {
             throw new Error('Receiver is required for non EVM chain')
@@ -198,6 +203,8 @@ export class EvmCrossChainOrder extends BaseOrder<
             escrowParams.timeLocks,
             complement
         )
+
+        console.log('EscrowExtension hashlockinfo', ext.hashLockInfo)
 
         return new EvmCrossChainOrder(
             ext,

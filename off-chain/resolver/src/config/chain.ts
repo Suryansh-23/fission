@@ -2,7 +2,7 @@ export interface EVMConfig {
   rpcUrl: string;
   chainId: number;
   privateKey: string;
-  relayerContractAddress: string;
+  resolverContractAddress: string;
   escrowFactoryAddress: string;
   gasMultiplier?: number;
   maxGasPrice?: bigint;
@@ -13,8 +13,8 @@ export interface SuiConfig {
   network: string;
   rpcUrl: string;
   privateKey: string;
-  packageId: string; 
-  registryObjectId: string; 
+  packageId: string;
+  registryObjectId: string;
   relayerPackageId: string;
   escrowFactoryAddress: string;
   gasBudget: number;

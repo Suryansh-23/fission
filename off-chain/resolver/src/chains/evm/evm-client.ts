@@ -56,18 +56,31 @@ export class EVMClient {
       const { args, trait } = takerTraits.encode();
 
       // Create immutables for source chain using SDK method
-      const resolverAddress = EvmAddress.fromString(this.getAddress());
+      const resolverAddress = EvmAddress.fromString(
+        this.config.resolverContractAddress
+      );
+      console.log(
+        "Creating source immutables with resolver address:",
+        resolverAddress
+      );
+
       const immutables = order.toSrcImmutables(
         chainId,
         resolverAddress,
         fillAmount,
         hashLock
       );
+      console.log(
+        "Immutables for source escrow:",
+        immutables.maker,
+        immutables.taker,
+        immutables.hashLock
+      );
 
       // Contract ABI matching the exact Resolver contract
       // TODO: Replace with actual Resolver contract ABI
       const contract = new ethers.Contract(
-        this.config.relayerContractAddress,
+        this.config.resolverContractAddress,
         RESOLVER_ABI,
         this.signer
       );
@@ -143,7 +156,7 @@ export class EVMClient {
 
       // Contract ABI matching the exact Resolver.deployDst method
       const contract = new ethers.Contract(
-        this.config.relayerContractAddress,
+        this.config.resolverContractAddress,
         RESOLVER_ABI,
         this.signer
       );
@@ -185,7 +198,7 @@ export class EVMClient {
 
       // Contract ABI matching the exact Resolver.withdraw method
       const contract = new ethers.Contract(
-        this.config.relayerContractAddress,
+        this.config.resolverContractAddress,
         RESOLVER_ABI,
         this.signer
       );
@@ -236,7 +249,7 @@ export class EVMClient {
 
       // Contract ABI matching the exact Resolver.cancel method
       const contract = new ethers.Contract(
-        this.config.relayerContractAddress,
+        this.config.resolverContractAddress,
         RESOLVER_ABI,
         this.signer
       );
@@ -285,7 +298,7 @@ export class EVMClient {
     // TODO: Replace with actual Resolver contract ABI
     // Placeholder ABI - will be replaced with complete resolver contract ABI
     return new ethers.Contract(
-      this.config.relayerContractAddress,
+      this.config.resolverContractAddress,
       RESOLVER_ABI,
       this.signer
     );

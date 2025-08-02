@@ -186,14 +186,17 @@ export class Quote<
         )
     }
     createEvmOrder(params: CrossChainOrderParamsData): EvmCrossChainOrder {
-        // prevents doing SUI -> ETH
-        // assert(this.isEvmQuote(), 'cannot create non evm order')
+        assert(this.isEvmQuote(), 'cannot create non evm order')
+
+        console.log('quote preset:', params?.preset || this.recommendedPreset)
 
         const preset = this.getPreset(params?.preset || this.recommendedPreset)
+        console.log('preset', preset, preset.auctionEndAmount)
 
         const auctionDetails = preset.createAuctionDetails(
             params.delayAuctionStartTimeBy
         )
+        console.log('auctionDetails', auctionDetails)
 
         const allowPartialFills = preset.allowPartialFills
         const allowMultipleFills = preset.allowMultipleFills
@@ -203,9 +206,18 @@ export class Quote<
             ? (params.nonce ?? randBigInt(UINT_40_MAX))
             : params.nonce
 
-        const takerAsset = this.params.dstTokenAddress.isNative()
-            ? EvmAddress.NATIVE
-            : this.params.dstTokenAddress
+        // Handle taker asset based on destination chain type
+        let takerAsset: AddressLike
+        if (isEvm(this.params.dstChain)) {
+            // For EVM destination chains, check if the token is native
+            const dstToken = this.params.dstTokenAddress as EvmAddress
+            takerAsset = dstToken.isNative() ? EvmAddress.NATIVE : dstToken
+        } else {
+            // For non-EVM only handle sui for now
+            takerAsset = SuiAddress.fromString(
+                this.params.dstTokenAddress.toHex()
+            )
+        }
 
         return EvmCrossChainOrder.new(
             this.srcEscrowFactory as EvmAddress,
@@ -213,7 +225,7 @@ export class Quote<
                 makerAsset: this.params.srcTokenAddress as EvmAddress,
                 takerAsset: takerAsset,
                 makingAmount: this.srcTokenAmount,
-                takingAmount: preset.auctionEndAmount,
+                takingAmount: this.dstTokenAmount,
                 maker: this.params.walletAddress as EvmAddress,
                 receiver: params.receiver as EvmAddress | undefined
             },

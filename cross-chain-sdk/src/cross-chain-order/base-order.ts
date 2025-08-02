@@ -91,6 +91,17 @@ export abstract class BaseOrder<TSrcAddress extends AddressLike, TJSON> {
             )
         }
 
+        console.log('Immutables:', {
+            hashLock,
+            safetyDeposit: this.srcSafetyDeposit,
+            taker,
+            maker: this.maker,
+            orderHash: this.getOrderHashBuffer(srcChainId),
+            amount,
+            timeLocks: this.timeLocks,
+            token: this.makerAsset
+        })
+
         return Immutables.new({
             hashLock,
             safetyDeposit: this.srcSafetyDeposit,
