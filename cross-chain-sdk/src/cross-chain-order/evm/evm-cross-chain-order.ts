@@ -188,6 +188,10 @@ export class EvmCrossChainOrder extends BaseOrder<
             EvmAddress.ZERO
         ]
 
+        const [takerAssetComplement, takerAsset] = orderInfo.takerAsset
+            ? orderInfo.takerAsset.splitToParts()
+            : [AddressComplement.ZERO, EvmAddress.ZERO]
+
         const ext = new EscrowExtension(
             escrowFactory,
             details.auction,
@@ -211,10 +215,7 @@ export class EvmCrossChainOrder extends BaseOrder<
             {
                 ...orderInfo,
                 receiver,
-                takerAsset:
-                    TRUE_ERC20[
-                        escrowParams.srcChainId as keyof typeof TRUE_ERC20
-                    ]
+                takerAsset
             },
             extra
         )
@@ -273,6 +274,8 @@ export class EvmCrossChainOrder extends BaseOrder<
     }
 
     public getOrderHash(srcChainId: number): string {
+        console.log('type data on hash:', this.getTypedData(srcChainId))
+
         return this.inner.getOrderHash(srcChainId)
     }
 

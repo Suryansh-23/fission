@@ -30,6 +30,10 @@ func GetOrderHash(typedData apitypes.TypedData) (ethcommon.Hash, error) {
 func BuildOrderTypedData(chainID common.ChainID, verifyingContract ethcommon.Address, name, version string, order common.LimitOrder) apitypes.TypedData {
 	chainIDHex := (*uint256.Int)(chainID)
 
+	// sui address (32 bytes) to evm address (20 bytes)
+	receiverAddr := ethcommon.HexToAddress(order.Receiver)
+	takerAssetAddr := ethcommon.HexToAddress(order.TakerAsset)
+
 	return apitypes.TypedData{
 		Types: apitypes.Types{
 			"EIP712Domain": EIP712Domain,
@@ -45,9 +49,9 @@ func BuildOrderTypedData(chainID common.ChainID, verifyingContract ethcommon.Add
 		Message: apitypes.TypedDataMessage{
 			"salt":         order.Salt,
 			"maker":        order.Maker,
-			"receiver":     order.Receiver,
+			"receiver":     receiverAddr.Hex(),
 			"makerAsset":   order.MakerAsset,
-			"takerAsset":   order.TakerAsset,
+			"takerAsset":   takerAssetAddr.Hex(),
 			"makingAmount": order.MakingAmount,
 			"takingAmount": order.TakingAmount,
 			"makerTraits":  order.MakerTraits,

@@ -219,6 +219,15 @@ export class Quote<
             )
         }
 
+        let receiver: AddressLike | undefined
+        if (params.receiver) {
+            if (isEvm(this.params.dstChain)) {
+                receiver = EvmAddress.fromString(params.receiver.toString())
+            } else {
+                receiver = SuiAddress.fromString(params.receiver.toString())
+            }
+        }
+
         return EvmCrossChainOrder.new(
             this.srcEscrowFactory as EvmAddress,
             {
@@ -227,7 +236,7 @@ export class Quote<
                 makingAmount: this.srcTokenAmount,
                 takingAmount: this.dstTokenAmount,
                 maker: this.params.walletAddress as EvmAddress,
-                receiver: params.receiver as EvmAddress | undefined
+                receiver: receiver
             },
             {
                 hashLock: params.hashLock,

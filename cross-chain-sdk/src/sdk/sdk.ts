@@ -269,7 +269,11 @@ export class SDK {
 
             const relayerRequest = new RelayerRequest({
                 srcChainId,
-                order: orderStruct,
+                order: {
+                    ...orderStruct,
+                    takerAsset: evmOrder.takerAsset.toString(),
+                    receiver: evmOrder.receiver.toString()
+                },
                 signature,
                 quoteId,
                 extension: evmOrder.extension.encode(),

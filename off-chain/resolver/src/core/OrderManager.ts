@@ -5,6 +5,7 @@ import {
   TakerTraits,
   RelayerRequestParams,
   SupportedChain,
+  SuiAddress,
   EvmEscrowFactory,
   EvmEscrowFactoryFacade,
   EvmCrossChainOrder,
@@ -88,7 +89,15 @@ export class OrderManager {
 
     // Convert RelayerRequestParams to EvmCrossChainOrder using SDK method
     const crossChainOrder = EvmCrossChainOrder.fromDataAndExtension(
-      relayerParams.order,
+      {
+        ...relayerParams.order,
+        receiver: SuiAddress.fromString(relayerParams.order.receiver)
+          .splitToParts()[1]
+          .toHex(),
+        takerAsset: SuiAddress.fromString(relayerParams.order.takerAsset)
+          .splitToParts()[1]
+          .toHex(),
+      },
       extension
     );
     const orderHash = crossChainOrder.getOrderHash(relayerParams.srcChainId);

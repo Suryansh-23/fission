@@ -85,6 +85,8 @@ export class EVMClient {
         this.signer
       );
 
+      console.log("order:", order.build());
+
       const tx = await contract.deploySrc(
         immutables.build(),
         order.build(),
