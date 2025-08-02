@@ -3,7 +3,8 @@ import { ChevronDown, ArrowUpDown, Settings, Clock, CheckCircle, Loader } from '
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useAccount } from 'wagmi';
 import { DEFAULT_EVM_TOKENS, DEFAULT_SUI_TOKENS } from '../constants/tokens';
-import crossChainSDK, { Quote, OrderStatus, PresetEnum } from '../services/crossChainSDK';
+import crossChainSDKInstance, { OrderStatus, PresetEnum } from '../services/crossChainSDK';
+import type { Quote } from '@1inch/cross-chain-sdk';
 
 interface Token {
   symbol: string;
@@ -69,7 +70,7 @@ const SwapInterface: React.FC = () => {
     try {
       console.log('🔍 Getting cross-chain quote...');
       
-      const quoteResponse = await crossChainSDK.getQuote({
+      const quoteResponse = await crossChainSDKInstance.getQuote({
         amount: (BigInt(payAmount) * BigInt(10 ** payToken.decimals)).toString(),
         srcChainId: payChain.chainId,
         dstChainId: receiveChain.chainId,
@@ -110,15 +111,15 @@ const SwapInterface: React.FC = () => {
       // Step 1: Generate secrets
       const presetKey = singleFill ? PresetEnum.fast : PresetEnum.medium;
       const secretCount = quote.presets[presetKey].secretsCount;
-      const generatedSecrets = crossChainSDK.generateSecrets(secretCount);
+      const generatedSecrets = crossChainSDKInstance.generateSecrets(secretCount);
       
       // Step 2: Create hash lock
-      const hashLock = crossChainSDK.createHashLock(generatedSecrets);
-      const secretHashes = crossChainSDK.hashSecrets(generatedSecrets);
+      const hashLock = crossChainSDKInstance.createHashLock(generatedSecrets);
+      const secretHashes = crossChainSDKInstance.hashSecrets(generatedSecrets);
       
       // Step 3: Create order
       // Create order with the quote
-      const orderInfo = await crossChainSDK.createOrder(quote, {
+      const orderInfo = await crossChainSDKInstance.createOrder(quote, {
         walletAddress: walletAddress,
         hashLock: hashLock,
         preset: PresetEnum.fast, // Use SDK enum
@@ -131,7 +132,7 @@ const SwapInterface: React.FC = () => {
       console.log('📝 Order created:', orderInfo.hash);
       
       // Step 4: Submit order
-      await crossChainSDK.submitOrder(
+      await crossChainSDKInstance.submitOrder(
         quote.srcChainId,
         orderInfo.order,
         orderInfo.quoteId,
@@ -141,16 +142,16 @@ const SwapInterface: React.FC = () => {
       console.log('📤 Order submitted successfully');
       
       // Step 5: Wait for completion
-      const finalStatus = await crossChainSDK.waitForOrderCompletion(
+      const finalStatus = await crossChainSDKInstance.waitForOrderCompletion(
         orderInfo.hash,
         generatedSecrets,
-        (status) => {
+        (status: OrderStatus) => {
           setSwapStatus(status);
           console.log('📊 Order status update:', status);
         }
       );
       
-      setSwapStatus(finalStatus.status);
+      setSwapStatus(finalStatus.status as OrderStatus);
       console.log('🏁 Swap completed with status:', finalStatus.status);
       
       // Reset UI after successful swap

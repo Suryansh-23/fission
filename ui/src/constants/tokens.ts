@@ -1,7 +1,7 @@
 // TODO: Complete token address mapping for all supported chains
 // This file contains token addresses for EVM and Sui chains
 
-import { NetworkEnum } from '../services/crossChainSDK';
+import { NetworkEnum } from '@1inch/cross-chain-sdk';
 
 export interface TokenInfo {
   symbol: string;
