@@ -73,7 +73,7 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
         const deadline =
             details.auction.startTime +
             details.auction.duration +
-            mergedExtra.orderExpirationDelay
+            BigInt(mergedExtra.orderExpirationDelay || 0)
 
         this.orderConfig = {
             srcToken: orderInfo.makerAsset,
@@ -275,7 +275,7 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
             },
             extra: {
                 orderExpirationDelay:
-                    this.orderConfig.orderExpirationDelay.toString(),
+                    this.orderConfig.orderExpirationDelay?.toString() || '0',
                 source: this.orderConfig.source,
                 allowMultipleFills: this.orderConfig.allowMultipleFills,
                 allowPartialFills: this.orderConfig.allowPartialFills,

@@ -5,8 +5,10 @@ import {
 } from '@1inch/fusion-sdk'
 import {CustomPreset, PresetEnum} from '../api'
 import {EvmCrossChainOrder} from '../cross-chain-order/evm'
+import {BaseOrder} from '../cross-chain-order/base-order'
 import {SupportedChain} from '../chains'
 import {HashLock} from '../domains/hash-lock'
+import {AddressLike} from '../domains/addresses'
 
 export type CrossChainSDKConfigParams = {
     url: string
@@ -69,7 +71,7 @@ export type OrderInfo = {
 }
 
 export type PreparedOrder = {
-    order: EvmCrossChainOrder
+    order: BaseOrder<AddressLike, any>
     hash: string
     quoteId: string
 }

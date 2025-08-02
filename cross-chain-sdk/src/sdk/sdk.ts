@@ -11,8 +11,11 @@ import {
 import {
     EvmAddress as Address,
     EvmAddress,
-    SuiAddress
+    SuiAddress,
+    AddressLike
 } from '../domains/addresses'
+import {BaseOrder} from '../cross-chain-order/base-order'
+import {EvmCrossChainOrder} from '../cross-chain-order/evm'
 import {
     FusionApi,
     Quote,
@@ -32,9 +35,7 @@ import {
     ReadyToExecutePublicActions,
     QuoterRequestParams
 } from '../api'
-import {EvmCrossChainOrder} from '../cross-chain-order/evm'
 import {NetworkEnum, SupportedChain} from '../chains'
-import {AddressLike} from 'ethers'
 
 export class SDK {
     public readonly api: FusionApi
@@ -170,9 +171,10 @@ export class SDK {
             throw new Error('request quote with enableEstimate=true')
         }
 
-        assert(quote.isEvmQuote(), 'cannot use non-evm quote')
+        // prevents doing SUI -> ETH
+        // assert(quote.isEvmQuote(), 'cannot use non-evm quote')
 
-        const order = quote.createEvmOrder({
+        const relayerParams = {
             hashLock: params.hashLock,
             receiver: params.receiver
                 ? quote.dstChainId === NetworkEnum.SUI
@@ -184,7 +186,17 @@ export class SDK {
             takingFeeReceiver: params.fee?.takingFeeReceiver,
             permit: params.permit,
             isPermit2: params.isPermit2
-        })
+        }
+
+        let order: BaseOrder<any, any>
+        if (quote.isEvmQuote()) {
+            order = quote.createEvmOrder(relayerParams)
+        } else if (quote.isSuiQuote()) {
+            order = quote.createSuiOrder(relayerParams)
+        } else {
+            // we don't support this quote type
+            throw new Error('unsupported quote type')
+        }
 
         const hash = order.getOrderHash(quote.srcChainId)
 
@@ -193,7 +205,7 @@ export class SDK {
 
     public async submitOrder(
         srcChainId: SupportedChain,
-        order: EvmCrossChainOrder,
+        order: BaseOrder<AddressLike, any>,
         quoteId: string,
         secretHashes: string[],
         makerPubKey?: `0x${string}`,
@@ -208,8 +220,7 @@ export class SDK {
                 'with disabled multiple fills you provided secretHashes > 1'
             )
         } else if (order.multipleFillsAllowed && secretHashes) {
-            const secretCount =
-                order.escrowExtension.hashLockInfo.getPartsCount() + 1n
+            const secretCount = order.hashLock.getPartsCount() + 1n
 
             if (secretHashes.length !== Number(secretCount)) {
                 throw new Error(
@@ -218,36 +229,62 @@ export class SDK {
             }
         }
 
-        const orderStruct = order.build()
-
         if (srcChainId === NetworkEnum.SUI) {
             assert(signature, 'signature is required for SUI orders')
             assert(makerPubKey, 'makerPubKey is required for SUI orders')
+
+            // For Sui orders, we need to handle differently
+            // The order should be a SuiCrossChainOrder
+            const orderJSON = order.toJSON()
+
+            const relayerRequest = new RelayerRequest({
+                srcChainId,
+                order: orderJSON as any, // TODO: Fix this type casting
+                signature,
+                quoteId,
+                extension: '', // Sui doesn't use extension in the same way
+                secretHashes: secretHashes,
+                makerPubKey: makerPubKey
+            })
+
+            await this.api.submitOrder(relayerRequest)
+
+            return {
+                order: orderJSON as any, // TODO: Fix this type casting
+                signature,
+                quoteId,
+                orderHash: order.getOrderHash(srcChainId),
+                extension: ''
+            }
         } else {
+            // EVM order handling
+            const evmOrder = order as unknown as EvmCrossChainOrder
+            const orderStruct = evmOrder.build()
+
             signature = (await this.config.blockchainProvider.signTypedData(
                 orderStruct.maker,
-                order.getTypedData(srcChainId)
+                evmOrder.getTypedData(srcChainId)
             )) as `0x${string}`
-        }
 
-        const relayerRequest = new RelayerRequest({
-            srcChainId,
-            order: orderStruct,
-            signature,
-            quoteId,
-            extension: order.extension.encode(),
-            secretHashes: secretHashes,
-            makerPubKey: makerPubKey
-        })
+            const relayerRequest = new RelayerRequest({
+                srcChainId,
+                order: orderStruct,
+                signature,
+                quoteId,
+                extension: evmOrder.extension.encode(),
+                secretHashes: secretHashes,
+                makerPubKey: makerPubKey
+            })
 
-        await this.api.submitOrder(relayerRequest)
+            await this.api.submitOrder(relayerRequest)
 
-        return {
-            order: orderStruct,
-            signature,
-            quoteId,
-            orderHash: order.getOrderHash(srcChainId),
-            extension: relayerRequest.extension
+            return {
+                order: orderStruct,
+                signature,
+                quoteId,
+                orderHash: evmOrder.getOrderHash(srcChainId),
+                extension: relayerRequest.extension
+            }
         }
     }
 

@@ -64,7 +64,7 @@
     "@eslint/eslintrc": "^3.1.0",
     "@eslint/js": "^9.5.0",
     "@jest/types": "30.0.1",
-    "@solana/spl-token": "0.4.13",
+    "@solana/spl-token": "^0.1.8",
     "@swc/core": "1.11.24",
     "@swc/jest": "0.2.38",
     "@types/jest": "29.5.12",

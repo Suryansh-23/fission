@@ -2,12 +2,18 @@ import {UINT_40_MAX} from '@1inch/byte-utils'
 import {randBigInt} from '@1inch/fusion-sdk'
 import assert from 'assert'
 import {CrossChainOrderParamsData, Presets} from './types'
-import {EvmAddress, SolanaAddress, SuiAddress} from '../../../domains/addresses'
+import {
+    EvmAddress,
+    SolanaAddress,
+    SuiAddress,
+    AddressLike
+} from '../../../domains/addresses'
 import {TimeLocks} from '../../../domains/time-locks'
 import {Cost, PresetEnum, QuoterResponse, TimeLocksRaw} from '../types'
 import {Preset} from '../preset'
 import {QuoterRequest} from '../quoter.request'
 import {EvmCrossChainOrder} from '../../../cross-chain-order/evm'
+import {SuiCrossChainOrder} from '../../../cross-chain-order/sui'
 import {
     EvmChain,
     isEvm,
@@ -15,7 +21,8 @@ import {
     isSui,
     SolanaChain,
     SuiChain,
-    SupportedChain
+    SupportedChain,
+    NetworkEnum
 } from '../../../chains'
 import {AuctionWhitelistItem} from '../../../cross-chain-order/evm/types'
 import {AddressForChain} from '../../../type-utils'
@@ -179,7 +186,8 @@ export class Quote<
         )
     }
     createEvmOrder(params: CrossChainOrderParamsData): EvmCrossChainOrder {
-        assert(this.isEvmQuote(), 'cannot create non evm order')
+        // prevents doing SUI -> ETH
+        // assert(this.isEvmQuote(), 'cannot create non evm order')
 
         const preset = this.getPreset(params?.preset || this.recommendedPreset)
 
@@ -200,18 +208,18 @@ export class Quote<
             : this.params.dstTokenAddress
 
         return EvmCrossChainOrder.new(
-            this.srcEscrowFactory,
+            this.srcEscrowFactory as EvmAddress,
             {
-                makerAsset: this.params.srcTokenAddress,
+                makerAsset: this.params.srcTokenAddress as EvmAddress,
                 takerAsset: takerAsset,
                 makingAmount: this.srcTokenAmount,
                 takingAmount: preset.auctionEndAmount,
-                maker: this.params.walletAddress,
-                receiver: params.receiver
+                maker: this.params.walletAddress as EvmAddress,
+                receiver: params.receiver as EvmAddress | undefined
             },
             {
                 hashLock: params.hashLock,
-                srcChainId: this.params.srcChain,
+                srcChainId: this.params.srcChain as EvmChain,
                 dstChainId: this.params.dstChain,
                 srcSafetyDeposit: this.srcSafetyDeposit,
                 dstSafetyDeposit: this.dstSafetyDeposit,
@@ -246,6 +254,67 @@ export class Quote<
                 orderExpirationDelay: params?.orderExpirationDelay,
                 source: this.params.source,
                 enablePermit2: params.isPermit2
+            }
+        )
+    }
+
+    createSuiOrder(params: CrossChainOrderParamsData): SuiCrossChainOrder {
+        const preset = this.getPreset(params?.preset || this.recommendedPreset)
+
+        const auctionDetails = preset.createAuctionDetails(
+            params.delayAuctionStartTimeBy
+        )
+
+        const allowPartialFills = preset.allowPartialFills
+        const allowMultipleFills = preset.allowMultipleFills
+        const isNonceRequired = !allowPartialFills || !allowMultipleFills
+
+        const nonce = isNonceRequired
+            ? (params.nonce ?? randBigInt(UINT_40_MAX))
+            : params.nonce
+
+        return SuiCrossChainOrder.new(
+            {
+                makerAsset: this.params.srcTokenAddress as SuiAddress,
+                takerAsset: this.params.dstTokenAddress,
+                makingAmount: this.srcTokenAmount,
+                takingAmount: preset.auctionEndAmount,
+                maker: this.params.walletAddress as SuiAddress,
+                receiver: params.receiver as AddressLike | undefined,
+                salt: nonce
+            },
+            {
+                hashLock: params.hashLock,
+                srcChainId: this.params.srcChain as NetworkEnum.SUI,
+                dstChainId: this.params.dstChain,
+                srcSafetyDeposit: this.srcSafetyDeposit,
+                dstSafetyDeposit: this.dstSafetyDeposit,
+                timeLocks: TimeLocks.new({
+                    srcWithdrawal: BigInt(this.timeLocks.srcWithdrawal),
+                    srcPublicWithdrawal: BigInt(
+                        this.timeLocks.srcPublicWithdrawal
+                    ),
+                    srcCancellation: BigInt(this.timeLocks.srcCancellation),
+                    srcPublicCancellation: BigInt(
+                        this.timeLocks.srcPublicCancellation
+                    ),
+                    dstWithdrawal: BigInt(this.timeLocks.dstWithdrawal),
+                    dstPublicWithdrawal: BigInt(
+                        this.timeLocks.dstPublicWithdrawal
+                    ),
+                    dstCancellation: BigInt(this.timeLocks.dstCancellation)
+                })
+            },
+            {
+                auction: auctionDetails,
+                resolvingStartTime: auctionDetails.startTime
+            },
+            {
+                nonce,
+                allowPartialFills,
+                allowMultipleFills,
+                orderExpirationDelay: params?.orderExpirationDelay,
+                source: this.params.source
             }
         )
     }

@@ -12,6 +12,8 @@ export class RelayerApi {
 
     submit(params: RelayerRequest): Promise<void> {
         const url = `${this.config.url}/${RelayerApi.Version}/submit`
+        console.log('RelayerApi submit url:', url)
+        console.log('RelayerApi submit params:', params)
 
         return this.httpClient.post(url, params)
     }
