@@ -126,14 +126,15 @@ export class EVMClient {
    * Get destination immutables from source escrow deployment
    * Uses escrow factory event monitoring approach
    */
-  async getDstImmutables(srcBlockHash: string): Promise<[any, any]> {
+  async getDstImmutables(srcBlockHash: string) {
     try {
       // Get source escrow event from factory
-      const [immutables, complement] =
-        await this.escrowFactory.getSrcDeployEvent(srcBlockHash);
+      const complement = await this.escrowFactory.getSrcDeployEvent(
+        srcBlockHash
+      );
 
       // Return both immutables and complement for address calculation
-      return [immutables, complement];
+      return complement;
     } catch (error) {
       console.error("Error getting destination immutables:", error);
       throw error;

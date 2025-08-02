@@ -330,8 +330,9 @@ export class OrderManager {
         console.log(`EVM source escrow deployed - TxHash: ${srcResult.txHash}`);
 
         // Get source complement from factory event
-        const [srcImmutables, srcComplement] =
-          await this.evmClient.getDstImmutables(srcResult.blockHash);
+        const srcComplement = await this.evmClient.getDstImmutables(
+          srcResult.blockHash
+        );
         storedOrder.srcComplement = srcComplement;
       } else {
         console.log(`Using Sui client for source deployment`);
