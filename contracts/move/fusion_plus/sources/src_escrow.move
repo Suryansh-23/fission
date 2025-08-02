@@ -35,7 +35,7 @@ public struct SrcEscrowCreated has copy, drop {
     id: ID,
     order_hash: vector<u8>,
     hashlock: vector<u8>,
-    maker: address,
+    maker: vector<u8>,
     taker: address,
     making_amount: u64,
     taking_amount: u64,
@@ -181,6 +181,8 @@ public fun create_new<T: store>(
             ),
             EInvalidProof,
         );
+    } else {
+        assert!(merkle_data.secret_hash == merkle_data.hashlock_info, EInvalidProof);
     };
 
     let mut immutables = immutables::new(
@@ -207,16 +209,11 @@ public fun create_new<T: store>(
 
     let escrow_id = object::uid_to_inner(&escrow.id);
 
-    let mut actual_receiver = maker;
-    if (receiver != @0x0) {
-        actual_receiver = receiver;
-    };
-
     event::emit(SrcEscrowCreated {
         id: escrow_id,
         order_hash,
         hashlock: hashlock,
-        maker: actual_receiver,
+        maker: receiver,
         taker: sender,
         making_amount: actual_making_amount,
         taking_amount: taking_amount,
@@ -427,4 +424,111 @@ fun extract_merkle_root_shortened(hashlock_info: &vector<u8>): vector<u8> {
     };
 
     merkle_root
+}
+
+
+#[test_only]
+/// Test-only version of create_new that bypasses signature verification
+/// This allows for easier testing without requiring valid cryptographic signatures
+public fun create_new_for_testing<T: store>(
+    clock: &Clock,
+    merkle_data: MerkleProofData,
+    order: &mut Order<T>,
+    _signature_data: SignatureData, // Unused in testing
+    deposit_amount: u64,
+    safety_deposit: Coin<SUI>,
+    timelocks: Timelocks,
+    ctx: &mut TxContext,
+) {
+    let sender = ctx.sender();
+    let maker = order::get_maker(order);
+    let receiver = order::get_receiver(order);
+    let is_multiple_fills_allowed = order::is_multiple_fills_allowed(order);
+    let order_hash = order::get_order_hash(order);
+    let remaining_making_amount = order::get_remaining_amount(order);
+    assert!(order::is_order_active(order), EOrderAlreadyFilled);
+
+    // Skip signature verification for testing
+
+    let type_name = type_name::get<T>();
+    let asset_id = type_name::get_address(&type_name);
+
+    let order_making_amount = order::get_making_amount(order);
+    let is_partial_fill_allowed = order::is_partial_fill_allowed(order);
+
+    let actual_making_amount = deposit_amount;
+
+    if (actual_making_amount != order_making_amount) {
+        assert!(is_partial_fill_allowed, EPartialFillsNotAllowed);
+    };
+
+    let current_time = clock.timestamp_ms();
+
+    let mut hashlock = merkle_data.hashlock_info;
+
+    if (is_multiple_fills_allowed) {
+        let calculated_merkle_root = merkle_proof::process_proof(
+            merkle_data.secret_index,
+            merkle_data.secret_hash,
+            merkle_data.proof,
+        );
+
+        assert!(
+            extract_merkle_root_shortened(&calculated_merkle_root) == extract_merkle_root_shortened(&merkle_data.hashlock_info),
+            EInvalidProof,
+        );
+
+        let parts_amount = extract_parts_amount(&merkle_data.hashlock_info);
+        assert!(parts_amount > 1, EInvalidProof);
+        hashlock = merkle_data.secret_hash;
+        assert!(
+            is_valid_partial_fill(
+                actual_making_amount,
+                remaining_making_amount,
+                order_making_amount,
+                parts_amount as u64,
+                merkle_data.secret_index + 1,
+            ),
+            EInvalidProof,
+        );
+    } else {
+        assert!(merkle_data.secret_hash == merkle_data.hashlock_info, EInvalidProof);
+    };
+
+
+    let mut immutables = immutables::new(
+        order_hash,
+        hashlock,
+        maker,
+        sender,
+        asset_id,
+        actual_making_amount,
+        coin::value(&safety_deposit),
+        timelocks,
+    );
+
+    immutables::set_src_deployment_time(&mut immutables, current_time);
+
+    let escrow_deposit = order::split_coins(order, actual_making_amount, ctx);
+
+    let escrow = SrcEscrow<T> {
+        id: object::new(ctx),
+        immutables,
+        deposit: escrow_deposit,
+        safety_deposit,
+    };
+
+    let escrow_id = object::uid_to_inner(&escrow.id);
+
+    event::emit(SrcEscrowCreated {
+        id: escrow_id,
+        order_hash,
+        hashlock: hashlock,
+        maker: receiver,
+        taker: sender,
+        making_amount: actual_making_amount,
+        taking_amount: 0,
+    });
+
+    transfer::share_object(escrow);
 }

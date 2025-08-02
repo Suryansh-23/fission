@@ -4,6 +4,7 @@ use fusion_plus::auction_calculator::{Self, AuctionDetails};
 use sui::coin::{Self, Coin};
 use sui::event;
 use sui::hash;
+use sui::address;
 
 // Errors
 const EInvalidMakingAmount: u64 = 0;
@@ -14,7 +15,7 @@ const EUnauthorizedAccess: u64 = 1;
 public struct Order<phantom T: store> has key {
     id: UID,
     maker: address,
-    receiver: address,
+    receiver: vector<u8>,
     order_hash: vector<u8>,
     making_amount: u64,
     taking_amount: u64,
@@ -30,8 +31,8 @@ public struct Order<phantom T: store> has key {
 
 public struct OrderHashData has copy, drop {
     salt: vector<u8>,
-    maker: address,
-    receiver: address,
+    maker: vector<u8>,
+    receiver: vector<u8>,
     making_amount: u64,
     taking_amount: u64,
 }
@@ -50,7 +51,7 @@ fun init(_ctx: &mut TxContext) {}
 
 // Function to create order object (maker calls this to deposit coins)
 public entry fun create_order<T: store>(
-    receiver: address,
+    receiver: vector<u8>, // this will be an EVM address (20 bytes)
     making_amount: u64,
     taking_amount: u64,
     maker_asset: address,
@@ -69,7 +70,7 @@ public entry fun create_order<T: store>(
 
     let data = OrderHashData {
         salt,
-        maker: ctx.sender(),
+        maker: address::to_bytes(ctx.sender()),
         receiver,
         making_amount,
         taking_amount,
@@ -140,7 +141,7 @@ public fun get_maker<T: store>(order: &Order<T>): address {
     order.maker
 }
 
-public fun get_receiver<T: store>(order: &Order<T>): address {
+public fun get_receiver<T: store>(order: &Order<T>): vector<u8> {
     order.receiver
 }
 

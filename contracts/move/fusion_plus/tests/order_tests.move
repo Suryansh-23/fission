@@ -4,6 +4,7 @@ module fusion_plus::order_tests;
 use fusion_plus::order::{Self, Order};
 use sui::coin::{Self, Coin};
 use sui::test_scenario::{Self as test, next_tx, ctx};
+use sui::address;
 
 // Mock coin types for testing - need store ability for Order<T>
 // These are One Time Witness types
@@ -52,7 +53,7 @@ fun test_order_creation() {
 
         // Create the order
         order::create_order<USDC>(
-            receiver,
+            address::to_bytes(receiver),
             making_amount,
             taking_amount,
             MAKER_ASSET,
@@ -77,7 +78,7 @@ fun test_order_creation() {
 
         // Verify order properties
         assert!(order::get_maker(&order) == maker, 0);
-        assert!(order::get_receiver(&order) == @0x0, 1);
+        assert!(order::get_receiver(&order) == address::to_bytes(@0x0));
         assert!(order::get_making_amount(&order) == 1000_000000, 2);
         assert!(order::get_taking_amount(&order) == 100000000, 3);
         assert!(order::get_remaining_amount(&order) == 1000_000000, 4);
@@ -116,7 +117,7 @@ fun test_order_creation_with_receiver() {
         let ctx = ctx(&mut scenario);
 
         order::create_order<USDC>(
-            receiver, // Specific receiver address
+            address::to_bytes(receiver), // Specific receiver address
             500_00000000, // 500 USDC
             50000000, // 0.5 WBTC
             MAKER_ASSET,
@@ -138,7 +139,7 @@ fun test_order_creation_with_receiver() {
     {
         let order = test::take_shared<Order<USDC>>(&scenario);
 
-        assert!(order::get_receiver(&order) == receiver, 0);
+        assert!(order::get_receiver(&order) == address::to_bytes(receiver), 0);
         assert!(order::get_making_amount(&order) == 500_00000000, 1);
         assert!(order::is_partial_fill_allowed(&order) == false, 2);
 
@@ -172,7 +173,7 @@ fun test_order_creation_invalid_amount() {
 
         // This should fail because coin has 1000 USDC but we specify 2000 as making_amount
         order::create_order<USDC>(
-            @0x0,
+            address::to_bytes(@0x0),
             2000_00000000, // Wrong amount - coin only has 1000 USDC
             200000000, // 2 WBTC
             MAKER_ASSET,
@@ -214,7 +215,7 @@ fun test_multiple_fills_allowed() {
         let ctx = ctx(&mut scenario);
 
         order::create_order<USDC>(
-            @0x0,
+            address::to_bytes(@0x0),
             2000_00000000, // 2000 USDC
             200000000, // 2 WBTC
             MAKER_ASSET,

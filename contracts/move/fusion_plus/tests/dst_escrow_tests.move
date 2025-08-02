@@ -10,6 +10,7 @@ use sui::coin::{Self, Coin};
 use sui::hash;
 use sui::sui::SUI;
 use sui::test_scenario::{Self as test, next_tx, ctx};
+use sui::address;
 
 // Mock coin types for testing
 public struct USDC has drop, store {}
@@ -17,7 +18,7 @@ public struct WBTC has drop, store {}
 
 // Helper function to create a test order
 fun create_test_order<T: store>(
-    receiver: address,
+    receiver: vector<u8>,
     making_amount: u64,
     taking_amount: u64,
     deposit: Coin<T>,
@@ -104,7 +105,7 @@ fun test_dst_escrow_creation_with_order() {
         let ctx = ctx(&mut scenario);
 
         create_test_order<USDC>(
-            maker,
+            address::to_bytes(maker),
             2000_00000000, // making amount
             200000000, // taking amount (2 WBTC)
             usdc_coin_for_order,
@@ -193,7 +194,7 @@ fun test_dst_escrow_withdraw_with_order() {
         let ctx = ctx(&mut scenario);
 
         create_test_order<USDC>(
-            maker,
+            address::to_bytes(maker),
             1500_00000000, // making 1500 USDC
             150000000, // taking 1.5 WBTC
             usdc_for_order,
