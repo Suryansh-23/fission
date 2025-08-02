@@ -5,9 +5,9 @@ const Footer: React.FC = () => {
   return (
     <footer className="w-full bg-[#0B1426] border-t border-gray-800/50 mt-auto">
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Brand */}
-          <div className="col-span-1 md:col-span-2">
+          <div>
             <div className="flex items-center space-x-2 mb-4">
               <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-cyan-400 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">F</span>
@@ -42,26 +42,19 @@ const Footer: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Links */}
-          <div>
-            <h3 className="text-white font-semibold mb-4">Product</h3>
-            <ul className="space-y-2">
-              <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Swap</a></li>
-              <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Bridge</a></li>
-              <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Analytics</a></li>
-              <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">API</a></li>
-            </ul>
-          </div>
-
-          {/* Resources */}
-          <div>
-            <h3 className="text-white font-semibold mb-4">Resources</h3>
-            <ul className="space-y-2">
-              <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Documentation</a></li>
-              <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Help Center</a></li>
-              <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Blog</a></li>
-              <li><a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">Terms of Service</a></li>
-            </ul>
+          {/* Network Status */}
+          <div className="flex flex-col justify-center">
+            <h3 className="text-white font-semibold mb-4">Network Status</h3>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-gray-400 text-sm">Sui Network Active</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                <span className="text-gray-400 text-sm">Ethereum Network Active</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -70,15 +63,8 @@ const Footer: React.FC = () => {
           <div className="text-gray-400 text-sm mb-4 md:mb-0">
             © 2025 Fission DEX. All rights reserved.
           </div>
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-gray-400 text-sm">Sui Network Active</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className="text-gray-400 text-sm">Ethereum Network Active</span>
-            </div>
+          <div className="text-gray-400 text-sm">
+            Cross-chain swaps powered by 1inch Fusion
           </div>
         </div>
       </div>

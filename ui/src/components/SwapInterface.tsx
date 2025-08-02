@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronDown, ArrowUpDown, Settings, Clock, CheckCircle, Loader } from 'lucide-react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useAccount } from 'wagmi';
@@ -21,32 +21,39 @@ interface Chain {
   chainId: number;
 }
 
-// Combine EVM and Sui tokens for the UI
-const tokens: Token[] = [
-  ...DEFAULT_EVM_TOKENS,
-  ...DEFAULT_SUI_TOKENS,
-];
-
 const chains: Chain[] = [
   { name: 'Ethereum', symbol: 'ETH', chainId: 1 },
-  { name: 'Polygon', symbol: 'MATIC', chainId: 137 },
   { name: 'Sui', symbol: 'SUI', chainId: 0 },
 ];
+
+// Helper functions to get tokens for specific chains
+const getTokensForChain = (chainId: number): Token[] => {
+  if (chainId === 0) {
+    // Sui chain - only SUI and USDC
+    return DEFAULT_SUI_TOKENS;
+  } else if (chainId === 1) {
+    // Ethereum chain - ETH, USDC, WBTC
+    return DEFAULT_EVM_TOKENS;
+  }
+  return [];
+};
 
 const SwapInterface: React.FC = () => {
   const suiAccount = useCurrentAccount();
   const { address: evmAddress } = useAccount();
   
-  const [payToken, setPayToken] = useState<Token>(tokens[0]);
+  const [payChain, setPayChain] = useState<Chain>(chains[0]); // Default to Ethereum
+  const [receiveChain, setReceiveChain] = useState<Chain>(chains[1]); // Default to Sui
+  const [payToken, setPayToken] = useState<Token>(getTokensForChain(chains[0].chainId)[0]); // First token of Ethereum
   const [receiveToken, setReceiveToken] = useState<Token | null>(null);
-  const [payChain, setPayChain] = useState<Chain>(chains[0]);
-  const [receiveChain, setReceiveChain] = useState<Chain>(chains[2]); // Default to Sui
   const [payAmount, setPayAmount] = useState<string>('');
   const [receiveAmount, setReceiveAmount] = useState<string>('0');
   const [isQuoted, setIsQuoted] = useState<boolean>(false);
   const [singleFill, setSingleFill] = useState<boolean>(true);
   const [showPayTokens, setShowPayTokens] = useState<boolean>(false);
   const [showReceiveTokens, setShowReceiveTokens] = useState<boolean>(false);
+  const [showPayChains, setShowPayChains] = useState<boolean>(false);
+  const [showReceiveChains, setShowReceiveChains] = useState<boolean>(false);
   const [slippage, setSlippage] = useState<string>('0.5');
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
@@ -56,6 +63,44 @@ const SwapInterface: React.FC = () => {
   const [isProcessingSwap, setIsProcessingSwap] = useState<boolean>(false);
   const [swapStatus, setSwapStatus] = useState<OrderStatus | null>(null);
   const [currentOrderHash, setCurrentOrderHash] = useState<string | null>(null);
+
+  // Update tokens when chain changes
+  useEffect(() => {
+    const availableTokens = getTokensForChain(payChain.chainId);
+    if (availableTokens.length > 0) {
+      setPayToken(availableTokens[0]);
+    }
+    setIsQuoted(false); // Reset quote when chain changes
+    setQuote(null);
+    
+    // Ensure receive chain is different from pay chain
+    if (receiveChain.chainId === payChain.chainId) {
+      const differentChain = chains.find(chain => chain.chainId !== payChain.chainId);
+      if (differentChain) {
+        setReceiveChain(differentChain);
+      }
+    }
+  }, [payChain]);
+
+  useEffect(() => {
+    setReceiveToken(null); // Reset receive token when chain changes
+    setIsQuoted(false);
+    setQuote(null);
+    
+    // Ensure pay chain is different from receive chain
+    if (payChain.chainId === receiveChain.chainId) {
+      const differentChain = chains.find(chain => chain.chainId !== receiveChain.chainId);
+      if (differentChain) {
+        setPayChain(differentChain);
+      }
+    }
+  }, [receiveChain]);
+
+  // Get available tokens for current chains
+  const availablePayTokens = getTokensForChain(payChain.chainId);
+  const availableReceiveTokens = getTokensForChain(receiveChain.chainId).filter(
+    token => token.symbol !== payToken.symbol || token.chainId !== payToken.chainId
+  );
 
   const handleGetQuote = async () => {
     if (!payAmount || !receiveToken) return;
@@ -173,12 +218,21 @@ const SwapInterface: React.FC = () => {
   const switchTokens = () => {
     const tempToken = payToken;
     const tempChain = payChain;
-    setPayToken(receiveToken || tokens[1]);
-    setReceiveToken(tempToken);
+    
+    // Switch chains
     setPayChain(receiveChain);
     setReceiveChain(tempChain);
-    setIsQuoted(false);
+    
+    // Switch tokens if possible
+    if (receiveToken) {
+      setPayToken(receiveToken);
+      setReceiveToken(tempToken);
+    }
+    
+    // Switch amounts
+    setPayAmount(receiveAmount);
     setReceiveAmount('0');
+    setIsQuoted(false);
   };
 
   return (
@@ -313,7 +367,35 @@ const SwapInterface: React.FC = () => {
         <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4 mb-2">
           <div className="flex items-center justify-between mb-4">
             <span className="text-gray-400 text-base font-medium">You pay</span>
-            <span className="text-gray-400 text-base">Chain: {payChain.name}</span>
+            <div className="relative">
+              <button
+                onClick={() => setShowPayChains(!showPayChains)}
+                className="text-gray-400 hover:text-white text-sm flex items-center space-x-1 transition-colors"
+              >
+                <span>{payChain.name}</span>
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              {showPayChains && (
+                <div className="absolute top-full right-0 mt-2 w-32 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20">
+                  {chains.map((chain) => (
+                    <button
+                      key={chain.chainId}
+                      onClick={() => {
+                        setPayChain(chain);
+                        setShowPayChains(false);
+                      }}
+                      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                        chain.chainId === payChain.chainId
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-300 hover:bg-gray-700/50'
+                      }`}
+                    >
+                      {chain.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center justify-between">
@@ -332,12 +414,14 @@ const SwapInterface: React.FC = () => {
               
               {showPayTokens && (
                 <div className="absolute top-full mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10">
-                  {tokens.map((token) => (
+                  {availablePayTokens.map((token) => (
                     <button
                       key={token.symbol}
                       onClick={() => {
                         setPayToken(token);
                         setShowPayTokens(false);
+                        setIsQuoted(false); // Reset quote when token changes
+                        setQuote(null);
                       }}
                       className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-gray-700/50 transition-colors"
                     >
@@ -379,7 +463,35 @@ const SwapInterface: React.FC = () => {
         <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4 mb-6">
           <div className="flex items-center justify-between mb-4">
             <span className="text-gray-400 text-base font-medium">You receive</span>
-            <span className="text-gray-400 text-base">Chain: {receiveChain.name}</span>
+            <div className="relative">
+              <button
+                onClick={() => setShowReceiveChains(!showReceiveChains)}
+                className="text-gray-400 hover:text-white text-sm flex items-center space-x-1 transition-colors"
+              >
+                <span>{receiveChain.name}</span>
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              {showReceiveChains && (
+                <div className="absolute top-full right-0 mt-2 w-32 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20">
+                  {chains.filter(chain => chain.chainId !== payChain.chainId).map((chain) => (
+                    <button
+                      key={chain.chainId}
+                      onClick={() => {
+                        setReceiveChain(chain);
+                        setShowReceiveChains(false);
+                      }}
+                      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                        chain.chainId === receiveChain.chainId
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-300 hover:bg-gray-700/50'
+                      }`}
+                    >
+                      {chain.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center justify-between">
@@ -408,12 +520,14 @@ const SwapInterface: React.FC = () => {
               
               {showReceiveTokens && (
                 <div className="absolute top-full mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10">
-                  {tokens.filter(token => token.symbol !== payToken.symbol).map((token) => (
+                  {availableReceiveTokens.map((token) => (
                     <button
-                      key={token.symbol}
+                      key={`${token.symbol}-${token.chainId}`}
                       onClick={() => {
                         setReceiveToken(token);
                         setShowReceiveTokens(false);
+                        setIsQuoted(false); // Reset quote when token changes
+                        setQuote(null);
                       }}
                       className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-gray-700/50 transition-colors"
                     >
