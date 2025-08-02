@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "npx ts-node src/index.ts",
+    "dev": "npx tsc && node dist/off-chain/resolver/src/index.js",
+    "build": "npx tsc",
     "mock-relayer": "npx ts-node test/mock-relayer.ts",
     "test-connection": "npm run mock-relayer"
   },
@@ -19,7 +20,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "@1inch/cross-chain-sdk": "^0.2.1-rc.47",
+    "@1inch/cross-chain-sdk": "file:../../cross-chain-sdk",
     "@mysten/sui": "^1.37.0",
     "@types/ws": "^8.18.1",
     "dotenv": "^17.2.0",

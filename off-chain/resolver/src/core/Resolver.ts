@@ -1,8 +1,8 @@
-import { ResolverWebSocketClient } from '../communication/ws';
-import { OrderManager } from './OrderManager';
-import { ConfigManager } from '../config/ConfigManager';
 import { EVMClient } from '../chains/evm/evm-client';
 import { SuiClient } from '../chains/sui/sui-client';
+import { ResolverWebSocketClient } from '../communication/ws';
+import { ConfigManager } from '../config/ConfigManager';
+import { OrderManager } from './OrderManager';
 
 export class Resolver {
     private configManager: ConfigManager;
