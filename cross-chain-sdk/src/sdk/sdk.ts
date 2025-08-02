@@ -35,6 +35,7 @@ import {
     ReadyToExecutePublicActions,
     QuoterRequestParams
 } from '../api'
+import {SuiOrderJSON} from '../cross-chain-order/sui'
 import {NetworkEnum, SupportedChain} from '../chains'
 
 export class SDK {
@@ -235,11 +236,11 @@ export class SDK {
 
             // For Sui orders, we need to handle differently
             // The order should be a SuiCrossChainOrder
-            const orderJSON = order.toJSON()
+            const orderJSON = order.toJSON() as SuiOrderJSON
 
             const relayerRequest = new RelayerRequest({
                 srcChainId,
-                order: orderJSON as any, // TODO: Fix this type casting
+                order: orderJSON.orderInfo,
                 signature,
                 quoteId,
                 extension: '', // Sui doesn't use extension in the same way
@@ -250,7 +251,7 @@ export class SDK {
             await this.api.submitOrder(relayerRequest)
 
             return {
-                order: orderJSON as any, // TODO: Fix this type casting
+                order: orderJSON.orderInfo,
                 signature,
                 quoteId,
                 orderHash: order.getOrderHash(srcChainId),

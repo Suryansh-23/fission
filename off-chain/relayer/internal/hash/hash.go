@@ -84,17 +84,14 @@ func GetOrderHashForLimitOrder(chainID common.ChainID, order common.LimitOrder) 
 		if !ok {
 			return ethcommon.Hash{}, fmt.Errorf("invalid salt value: %v", order.Salt)
 		}
+		fmt.Println("Salt value:", saltBigInt.Bytes())
 
-		// hex to bytes conversion for maker address
-		makerBytes, err := HexToBytes32Strict(order.Maker)
-		if err != nil {
-			return ethcommon.Hash{}, fmt.Errorf("failed to decode maker address: %w", err)
-		}
+		// hex to bytes for Maker address
+		makerBytes := ethcommon.Hex2Bytes(strings.TrimPrefix(order.Maker, "0x"))
+		fmt.Println("Maker address bytes:", makerBytes, len(makerBytes), order.Maker)
 
-		receiverBytes, err := HexToBytes32Strict(order.Receiver)
-		if err != nil {
-			return ethcommon.Hash{}, fmt.Errorf("failed to decode receiver address: %w", err)
-		}
+		receiverBytes := ethcommon.HexToAddress(order.Receiver)
+		fmt.Println("Receiver address bytes:", receiverBytes.Bytes(), len(receiverBytes.Bytes()))
 
 		// Convert MakingAmount string to uint64
 		makingAmountBigInt, ok := new(big.Int).SetString(order.MakingAmount, 10)
@@ -102,6 +99,7 @@ func GetOrderHashForLimitOrder(chainID common.ChainID, order common.LimitOrder) 
 			return ethcommon.Hash{}, fmt.Errorf("invalid makingAmount value: %s", order.MakingAmount)
 		}
 		makingAmountUint64 := makingAmountBigInt.Uint64()
+		fmt.Println("Making amount:", makingAmountUint64)
 
 		// Convert TakingAmount string to uint64
 		takingAmountBigInt, ok := new(big.Int).SetString(order.TakingAmount, 10)
@@ -109,16 +107,19 @@ func GetOrderHashForLimitOrder(chainID common.ChainID, order common.LimitOrder) 
 			return ethcommon.Hash{}, fmt.Errorf("invalid takingAmount value: %s", order.TakingAmount)
 		}
 		takingAmountUint64 := takingAmountBigInt.Uint64()
+		fmt.Println("Taking amount:", takingAmountUint64)
 
 		if err := bcsEncoder.Encode(OrderHashType{
 			Salt:         saltBigInt.Bytes(),
 			Maker:        makerBytes,
-			Receiver:     receiverBytes,
+			Receiver:     receiverBytes.Bytes(),
 			MakingAmount: makingAmountUint64,
 			TakingAmount: takingAmountUint64,
 		}); err != nil {
 			return ethcommon.Hash{}, fmt.Errorf("failed to encode order: %w", err)
 		}
+
+		fmt.Println("Encoded order bytes:", bcsEncodedOrder.Bytes())
 
 		return crypto.Keccak256Hash(bcsEncodedOrder.Bytes()), nil
 	}

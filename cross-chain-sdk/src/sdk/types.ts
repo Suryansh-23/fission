@@ -4,11 +4,10 @@ import {
     LimitOrderV4Struct
 } from '@1inch/fusion-sdk'
 import {CustomPreset, PresetEnum} from '../api'
-import {EvmCrossChainOrder} from '../cross-chain-order/evm'
-import {BaseOrder} from '../cross-chain-order/base-order'
 import {SupportedChain} from '../chains'
-import {HashLock} from '../domains/hash-lock'
+import {BaseOrder} from '../cross-chain-order/base-order'
 import {AddressLike} from '../domains/addresses'
+import {HashLock} from '../domains/hash-lock'
 
 export type CrossChainSDKConfigParams = {
     url: string

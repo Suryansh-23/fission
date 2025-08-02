@@ -117,17 +117,17 @@ describe('SuiCrossChainOrder', () => {
         )
         const json = order.toJSON()
 
-        expect(json.orderInfo.srcToken).toBe(
+        expect(json.orderInfo.makerAsset).toBe(
             mockOrderInfo.makerAsset.toString()
         )
-        expect(json.orderInfo.dstToken).toBe(
+        expect(json.orderInfo.takerAsset).toBe(
             mockOrderInfo.takerAsset.toString()
         )
         expect(json.orderInfo.maker).toBe(mockOrderInfo.maker.toString())
-        expect(json.orderInfo.srcAmount).toBe(
+        expect(json.orderInfo.makingAmount).toBe(
             mockOrderInfo.makingAmount.toString()
         )
-        expect(json.orderInfo.minDstAmount).toBe(
+        expect(json.orderInfo.takingAmount).toBe(
             mockOrderInfo.takingAmount.toString()
         )
         expect(json.escrowParams.srcChainId).toBe(NetworkEnum.SUI)

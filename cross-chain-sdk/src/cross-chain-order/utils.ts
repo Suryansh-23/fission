@@ -5,7 +5,13 @@ const zero = bigInt(0)
 const n256 = bigInt(256)
 
 export const toLittleEndian = (bigNumber: BigInteger): Uint8Array => {
-    let result = new Uint8Array(32)
+    let result = new Uint8Array(
+        Math.min(
+            32,
+            bigNumber.bitLength().toJSNumber() / 8 +
+                (bigNumber.bitLength().toJSNumber() % 8 === 0 ? 0 : 1)
+        )
+    )
     let i = 0
 
     while (bigNumber.greater(zero)) {
@@ -20,7 +26,13 @@ export const toBigEndian = (bigNumber: BigInteger): Uint8Array => {
     return toLittleEndian(bigNumber).reverse()
 }
 
-export const MoveAddress = bcs.bytes(32).transform({
+export const MoveAddress = bcs.byteVector().transform({
+    // To change the input type, you need to provide a type definition for the input
+    input: (val: string) => toBigEndian(bigInt(val.slice(2), 16)),
+    output: (val: Uint8Array) => '0x' + toHex(val)
+})
+
+export const EvmAddress = bcs.byteVector().transform({
     // To change the input type, you need to provide a type definition for the input
     input: (val: string) => fromHex(val),
     output: (val) => toHex(val)

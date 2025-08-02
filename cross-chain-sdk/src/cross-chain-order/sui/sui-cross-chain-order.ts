@@ -1,23 +1,24 @@
 import {AuctionCalculator, randBigInt} from '@1inch/fusion-sdk'
-import {keccak256} from 'ethers'
 import {bcs} from '@mysten/bcs'
 import assert from 'assert'
-import {
-    SuiDetails,
-    SuiExtra,
-    SuiEscrowParams,
-    SuiOrderJSON,
-    SuiOrderInfoData
-} from './types'
-import {AddressLike, createAddress, SuiAddress} from '../../domains/addresses'
-import {NetworkEnum, SupportedChain, isSupportedChain} from '../../chains'
+import bigInt from 'big-integer'
+import {EvmAddress, MoveAddress, toBigEndian} from '../utils'
+import {keccak256} from 'ethers'
+import {isSupportedChain, NetworkEnum, SupportedChain} from '../../chains'
+import {AddressLike, SuiAddress} from '../../domains/addresses'
 import {HashLock} from '../../domains/hash-lock'
 import {TimeLocks} from '../../domains/time-locks'
-import {BaseOrder} from '../base-order'
 import {assertUInteger} from '../../utils'
-import {AuctionDetails, AuctionPoint} from '../../domains/auction-details'
-import {injectTrackCode} from '../source-track'
 import {now} from '../../utils/time'
+import {BaseOrder} from '../base-order'
+import {injectTrackCode} from '../source-track'
+import {
+    SuiDetails,
+    SuiEscrowParams,
+    SuiExtra,
+    SuiOrderInfoData,
+    SuiOrderJSON
+} from './types'
 
 export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
     private static DefaultExtra: Required<
@@ -209,7 +210,43 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
     }
 
     public getOrderHash(srcChainId: number): string {
-        return this.getOrderHashBuffer(srcChainId).toString('hex')
+        const orderHashDataStruct = bcs.struct('OrderHashData', {
+            salt: bcs.byteVector(),
+            maker: MoveAddress,
+            receiver: EvmAddress,
+            makingAmount: bcs.u64(),
+            takingAmount: bcs.u64()
+        })
+
+        const srcamt = bcs.u64().serialize(this.orderConfig.srcAmount)
+        const dstamt = bcs.u64().serialize(this.orderConfig.minDstAmount)
+
+        console.log('salt', toBigEndian(bigInt(this.orderConfig.salt)))
+        console.log(
+            'maker',
+            toBigEndian(bigInt(this.orderConfig.maker.toString().slice(2), 16))
+        )
+        console.log(
+            'maker',
+            MoveAddress.serialize(this.orderConfig.maker.toString()).toBytes()
+        )
+        console.log(
+            'receiver',
+            EvmAddress.serialize(this.orderConfig.receiver.toString()).toBytes()
+        )
+        console.log('srcamt', srcamt.toBytes(), 'dstamt', dstamt.toBytes())
+
+        const orderHashData = orderHashDataStruct.serialize({
+            salt: toBigEndian(bigInt(this.orderConfig.salt)),
+            maker: this.orderConfig.maker.toString(),
+            receiver: this.orderConfig.receiver.toString(),
+            makingAmount: this.orderConfig.srcAmount,
+            takingAmount: this.orderConfig.minDstAmount
+        })
+
+        console.log('orderHashData', orderHashData.toBytes())
+
+        return keccak256(orderHashData.toBytes())
     }
 
     public getOrderHashBuffer(srcChainId: number): Buffer {
@@ -218,38 +255,20 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
             'Unsupported source chain for Sui order'
         )
 
-        // Create a deterministic hash from order parameters
-        const orderData = {
-            srcToken: this.orderConfig.srcToken.toString(),
-            dstToken: this.orderConfig.dstToken.toString(),
-            maker: this.orderConfig.maker.toString(),
-            receiver: this.orderConfig.receiver.toString(),
-            srcAmount: this.orderConfig.srcAmount.toString(),
-            minDstAmount: this.orderConfig.minDstAmount.toString(),
-            deadline: this.orderConfig.deadline.toString(),
-            salt: this.orderConfig.salt.toString(),
-            srcChainId: srcChainId.toString(),
-            dstChainId: this.escrowParams.dstChainId.toString(),
-            hashLock: this.escrowParams.hashLock.toString(),
-            timeLocks: this.escrowParams.timeLocks.toString()
-        }
-
-        const serialized = bcs
-            .string()
-            .serialize(JSON.stringify(orderData))
-            .toBytes()
-        return Buffer.from(keccak256(serialized).slice(2), 'hex')
+        return Buffer.from(this.getOrderHash(srcChainId).slice(2), 'hex')
     }
 
     public toJSON(): SuiOrderJSON {
         return {
             orderInfo: {
-                srcToken: this.orderConfig.srcToken.toString(),
-                dstToken: this.orderConfig.dstToken.toString(),
+                salt: this.orderConfig.salt.toString(),
+                makerAsset: this.orderConfig.srcToken.toString(),
+                takerAsset: this.orderConfig.dstToken.toString(),
                 maker: this.orderConfig.maker.toString(),
-                srcAmount: this.orderConfig.srcAmount.toString(),
-                minDstAmount: this.orderConfig.minDstAmount.toString(),
-                receiver: this.orderConfig.receiver.toString()
+                makingAmount: this.orderConfig.srcAmount.toString(),
+                takingAmount: this.orderConfig.minDstAmount.toString(),
+                receiver: this.orderConfig.receiver.toString(),
+                makerTraits: 0n.toString()
             },
             escrowParams: {
                 hashLock: this.escrowParams.hashLock.toString(),

@@ -9,6 +9,16 @@ import {
     ZX
 } from '@1inch/fusion-sdk'
 import assert from 'assert'
+import {isEvm, isSupportedChain, SupportedChain} from '../../chains'
+import {TRUE_ERC20} from '../../deployments'
+import {AddressLike, createAddress, EvmAddress} from '../../domains/addresses'
+import {AddressComplement} from '../../domains/addresses/address-complement'
+import {HashLock} from '../../domains/hash-lock'
+import {TimeLocks} from '../../domains/time-locks'
+import {now} from '../../utils/time'
+import {BaseOrder} from '../base-order'
+import {EscrowExtension} from './escrow-extension'
+import {InnerOrder} from './inner-order'
 import {
     EvmCrossChainOrderInfo,
     EvmDetails,
@@ -16,25 +26,6 @@ import {
     EvmExtra,
     OrderInfoData
 } from './types'
-import {InnerOrder} from './inner-order'
-import {EscrowExtension} from './escrow-extension'
-import {AddressComplement} from '../../domains/addresses/address-complement'
-import {now} from '../../utils/time'
-import {createAddress, AddressLike, EvmAddress} from '../../domains/addresses'
-import {BaseOrder} from '../base-order'
-import {TRUE_ERC20} from '../../deployments'
-import {
-    isEvm,
-    isSupportedChain,
-    SupportedChain,
-    NetworkEnum
-} from '../../chains'
-import {HashLock} from '../../domains/hash-lock'
-import {TimeLocks} from '../../domains/time-locks'
-import {bcs} from '@mysten/bcs'
-import {MoveAddress, toBigEndian} from '../utils'
-import bigInt from 'big-integer'
-import {keccak256} from 'ethers'
 
 export class EvmCrossChainOrder extends BaseOrder<
     EvmAddress,
@@ -275,27 +266,7 @@ export class EvmCrossChainOrder extends BaseOrder<
     }
 
     public getOrderHash(srcChainId: number): string {
-        if (srcChainId == NetworkEnum.SUI) {
-            const orderHashDataStruct = bcs.struct('OrderHashData', {
-                salt: bcs.byteVector(),
-                maker: MoveAddress,
-                receiver: MoveAddress,
-                makingAmount: bcs.u64(),
-                takingAmount: bcs.u64()
-            })
-
-            const orderHashData = orderHashDataStruct.serialize({
-                salt: toBigEndian(bigInt(this.inner.salt)),
-                maker: this.inner.maker.toString(),
-                receiver: this.inner.receiver.toString(),
-                makingAmount: this.inner.makingAmount,
-                takingAmount: this.inner.takingAmount
-            })
-
-            return keccak256(orderHashData.toHex())
-        } else {
-            return this.inner.getOrderHash(srcChainId)
-        }
+        return this.inner.getOrderHash(srcChainId)
     }
 
     public getOrderHashBuffer(srcChainId: number): Buffer {

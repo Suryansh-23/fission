@@ -1,6 +1,6 @@
 import {LimitOrderV4Struct} from '@1inch/fusion-sdk'
-import {RelayerRequestParams} from './types'
 import {SupportedChain} from '../../chains'
+import {RelayerRequestParams} from './types'
 
 export class RelayerRequest {
     public readonly order: LimitOrderV4Struct
@@ -38,7 +38,8 @@ export class RelayerRequest {
             quoteId: this.quoteId,
             extension: this.extension,
             srcChainId: this.srcChainId,
-            secretHashes: this.secretHashes
+            secretHashes: this.secretHashes,
+            makerPubKey: this.makerPubKey
         }
     }
 }

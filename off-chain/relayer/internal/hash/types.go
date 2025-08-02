@@ -26,8 +26,8 @@ var Order = []apitypes.Type{
 
 type OrderHashType struct {
 	Salt         []byte
-	Maker        [32]uint8
-	Receiver     [32]uint8
+	Maker        []byte
+	Receiver     []byte
 	MakingAmount uint64
 	TakingAmount uint64
 }

@@ -87,12 +87,14 @@ export type SuiOrderInfoData = {
 
 export type SuiOrderJSON = {
     orderInfo: {
-        srcToken: string // Sui address
-        dstToken: string // destination chain address
+        salt: string
         maker: string // Sui address
-        srcAmount: string // u64 bigint
-        minDstAmount: string // u64 bigint
         receiver: string // destination chain address
+        makerAsset: string // Sui address
+        takerAsset: string // destination chain address
+        makingAmount: string // u64 bigint
+        takingAmount: string // u64 bigint
+        makerTraits: string
     }
     escrowParams: {
         hashLock: string // 32bytes hex
