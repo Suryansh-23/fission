@@ -1,10 +1,82 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ArrowUpDown, Settings, Clock, CheckCircle, Loader } from 'lucide-react';
+import { ChevronDown, ArrowUpDown, Clock, CheckCircle, Loader } from 'lucide-react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useAccount } from 'wagmi';
 import { DEFAULT_EVM_TOKENS, DEFAULT_SUI_TOKENS } from '../constants/tokens';
 import crossChainSDKInstance, { OrderStatus, PresetEnum } from '../services/crossChainSDK';
 import type { Quote } from '@1inch/cross-chain-sdk';
+
+// Mock quote data for testing
+const MOCK_QUOTE_DATA = {
+  "quoteId": "c696fe51-8844-43a4-9421-94ba4b77f5ba",
+  "srcTokenAmount": "1000000",
+  "dstTokenAmount": "1000000",
+  "presets": {
+    "fast": {
+      "startAmount": "10572996802695832",
+      "secretsCount": 1,
+      "costInDstToken": "2181666219875436",
+      "auctionDuration": 180,
+      "startAuctionIn": 17,
+      "initialRateBump": 710639,
+      "auctionStartAmount": "10572996802695832",
+      "auctionEndAmount": "9871490209590512",
+      "points": [],
+      "gasCostInfo": {
+        "gasPriceEstimate": "0",
+        "gasBumpEstimate": "0"
+      },
+      "allowPartialFills": false,
+      "allowMultipleFills": false
+    },
+    "medium": {
+      "startAmount": "12754662277999739",
+      "secretsCount": 1,
+      "costInDstToken": "2181666219875436",
+      "auctionDuration": 360,
+      "startAuctionIn": 17,
+      "initialRateBump": 2920706,
+      "auctionStartAmount": "12754662277999739",
+      "auctionEndAmount": "9871490209590512",
+      "points": [
+        {
+          "delay": 24,
+          "coefficient": 710639
+        }
+      ],
+      "gasCostInfo": {
+        "gasPriceEstimate": "0",
+        "gasBumpEstimate": "0"
+      },
+      "allowPartialFills": false,
+      "allowMultipleFills": false
+    },
+    "slow": {
+      "startAmount": "12754662277999739",
+      "secretsCount": 1,
+      "costInDstToken": "2181666219875436",
+      "auctionDuration": 600,
+      "startAuctionIn": 17,
+      "initialRateBump": 2920706,
+      "auctionStartAmount": "12754662277999739",
+      "auctionEndAmount": "9871490209590512",
+      "points": [
+        {
+          "delay": 24,
+          "coefficient": 710639
+        }
+      ],
+      "gasCostInfo": {
+        "gasPriceEstimate": "0",
+        "gasBumpEstimate": "0"
+      },
+      "allowPartialFills": false,
+      "allowMultipleFills": false
+    }
+  },
+  "recommendedPreset": "fast",
+  "slippage": 5.5
+};
 
 interface Token {
   symbol: string;
@@ -59,6 +131,7 @@ const SwapInterface: React.FC = () => {
 
   // Cross-chain swap state
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteDetails, setQuoteDetails] = useState<any>(null); // For storing detailed quote info
   const [isLoadingQuote, setIsLoadingQuote] = useState<boolean>(false);
   const [isProcessingSwap, setIsProcessingSwap] = useState<boolean>(false);
   const [swapStatus, setSwapStatus] = useState<OrderStatus | null>(null);
@@ -115,23 +188,27 @@ const SwapInterface: React.FC = () => {
     try {
       console.log('🔍 Getting cross-chain quote...');
       
-      const quoteResponse = await crossChainSDKInstance.getQuote({
-        amount: (BigInt(payAmount) * BigInt(10 ** payToken.decimals)).toString(),
-        srcChainId: payChain.chainId,
-        dstChainId: receiveChain.chainId,
-        srcTokenAddress: payToken.address,
-        dstTokenAddress: receiveToken.address,
-        walletAddress,
-        enableEstimate: true,
-      });
-
-      setQuote(quoteResponse);
-      // Convert bigint to number for display - SDK Quote uses bigint for amounts
-      const dstAmount = Number(quoteResponse.dstTokenAmount) / (10 ** receiveToken.decimals);
-      setReceiveAmount(dstAmount.toString());
+      // Using mock data for now since SDK is not working
+      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API delay
+      
+      // Calculate amounts based on input
+      const inputAmount = parseFloat(payAmount);
+      const outputAmount = inputAmount * 0.98; // 2% slippage simulation
+      
+      // Create mock quote with dynamic amounts
+      const mockQuote = {
+        ...MOCK_QUOTE_DATA,
+        srcTokenAmount: (BigInt(Math.floor(inputAmount * (10 ** payToken.decimals)))).toString(),
+        dstTokenAmount: (BigInt(Math.floor(outputAmount * (10 ** receiveToken.decimals)))).toString(),
+        quoteId: `mock-${Date.now()}`,
+      };
+      
+      setQuote(mockQuote as any);
+      setQuoteDetails(mockQuote);
+      setReceiveAmount(outputAmount.toString());
       setIsQuoted(true);
       
-      console.log('✅ Quote received:', quoteResponse);
+      console.log('✅ Mock quote received:', mockQuote.quoteId);
     } catch (error) {
       console.error('❌ Failed to get quote:', error);
       alert('Failed to get quote. Please try again.');
@@ -262,13 +339,6 @@ const SwapInterface: React.FC = () => {
               </button>
               <span className="text-gray-400 text-base">Multi Fill</span>
             </div>
-            
-            <button 
-              className="p-2 text-gray-400 hover:text-white transition-colors"
-              onClick={() => setShowSettings(!showSettings)}
-            >
-              <Settings className="w-5 h-5" />
-            </button>
           </div>
         </div>
 
@@ -345,21 +415,46 @@ const SwapInterface: React.FC = () => {
           </div>
         )}
 
-        {/* Quote Info */}
-        {isQuoted && (
-          <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-3 mb-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-400">Rate</span>
-              <span className="text-white">1 {payToken.symbol} = {(parseFloat(receiveAmount) / parseFloat(payAmount)).toFixed(6)} {receiveToken?.symbol}</span>
+        {/* Quote Details */}
+        {isQuoted && quoteDetails && (
+          <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4 mb-4">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-white text-base font-medium">Quote Details</span>
             </div>
-            <div className="flex items-center justify-between text-sm mt-2">
-              <span className="text-gray-400">Slippage Tolerance</span>
-              <span className="text-white">{slippage}%</span>
-            </div>
-            <div className="flex items-center justify-between text-sm mt-2">
-              <span className="text-gray-400">Network Fee</span>
-              <span className="text-white">~$0.50</span>
-            </div>
+            
+            {(() => {
+              const recommendedPreset = quoteDetails.presets[quoteDetails.recommendedPreset];
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-400">Rate</span>
+                    <span className="text-white">1 {payToken.symbol} = {(parseFloat(receiveAmount) / parseFloat(payAmount)).toFixed(6)} {receiveToken?.symbol}</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-400">Slippage</span>
+                    <span className="text-white">{quoteDetails.slippage}%</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-400">Number of Fills</span>
+                    <span className="text-white">{recommendedPreset.secretsCount}</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-400">Preset</span>
+                    <span className="text-white capitalize">{quoteDetails.recommendedPreset}</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-400">Gas Cost Estimate</span>
+                    <span className="text-white">
+                      {recommendedPreset.gasCostInfo.gasPriceEstimate === "0" ? "Free" : `${recommendedPreset.gasCostInfo.gasPriceEstimate} ETH`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
