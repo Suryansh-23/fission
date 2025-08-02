@@ -2,7 +2,10 @@ package hash
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
+	"math/big"
+	"strings"
 
 	"relayer/internal/common"
 
@@ -76,7 +79,44 @@ func GetOrderHashForLimitOrder(chainID common.ChainID, order common.LimitOrder) 
 		bcsEncodedOrder := bytes.Buffer{}
 		bcsEncoder := mystenbcs.NewEncoder(&bcsEncodedOrder)
 
-		if err := bcsEncoder.Encode(order); err != nil {
+		// salt big.Int from string
+		saltBigInt, ok := new(big.Int).SetString(order.Salt, 10)
+		if !ok {
+			return ethcommon.Hash{}, fmt.Errorf("invalid salt value: %v", order.Salt)
+		}
+
+		// hex to bytes conversion for maker address
+		makerBytes, err := HexToBytes32Strict(order.Maker)
+		if err != nil {
+			return ethcommon.Hash{}, fmt.Errorf("failed to decode maker address: %w", err)
+		}
+
+		receiverBytes, err := HexToBytes32Strict(order.Receiver)
+		if err != nil {
+			return ethcommon.Hash{}, fmt.Errorf("failed to decode receiver address: %w", err)
+		}
+
+		// Convert MakingAmount string to uint64
+		makingAmountBigInt, ok := new(big.Int).SetString(order.MakingAmount, 10)
+		if !ok {
+			return ethcommon.Hash{}, fmt.Errorf("invalid makingAmount value: %s", order.MakingAmount)
+		}
+		makingAmountUint64 := makingAmountBigInt.Uint64()
+
+		// Convert TakingAmount string to uint64
+		takingAmountBigInt, ok := new(big.Int).SetString(order.TakingAmount, 10)
+		if !ok {
+			return ethcommon.Hash{}, fmt.Errorf("invalid takingAmount value: %s", order.TakingAmount)
+		}
+		takingAmountUint64 := takingAmountBigInt.Uint64()
+
+		if err := bcsEncoder.Encode(OrderHashType{
+			Salt:         saltBigInt.Bytes(),
+			Maker:        makerBytes,
+			Receiver:     receiverBytes,
+			MakingAmount: makingAmountUint64,
+			TakingAmount: takingAmountUint64,
+		}); err != nil {
 			return ethcommon.Hash{}, fmt.Errorf("failed to encode order: %w", err)
 		}
 
@@ -97,4 +137,21 @@ func GetOrderHashForLimitOrder(chainID common.ChainID, order common.LimitOrder) 
 	)
 
 	return GetOrderHash(typedData)
+}
+
+func HexToBytes32Strict(s string) ([32]byte, error) {
+	var out [32]byte
+	s = strings.TrimPrefix(s, "0x")
+	if len(s)%2 != 0 {
+		return out, fmt.Errorf("hex must have even length")
+	}
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return out, err
+	}
+	if len(b) != 32 {
+		return out, fmt.Errorf("expected 32 bytes, got %d", len(b))
+	}
+	copy(out[:], b) // copy into fixed array
+	return out, nil
 }

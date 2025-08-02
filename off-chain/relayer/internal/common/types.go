@@ -214,6 +214,7 @@ type Order struct {
 	QuoteID          uuid.UUID  `json:"quoteId"`
 	Extension        string     `json:"extension"`
 	SecretHashes     []string   `json:"secretHashes,omitempty"`
+	MakerPubKey      string     `json:"makerPubKey,omitempty"` // Optional field for maker's public key
 }
 
 func (o *Order) UnmarshalJSON(bytes []byte) error {

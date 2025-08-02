@@ -23,3 +23,11 @@ var Order = []apitypes.Type{
 	{Name: "takingAmount", Type: "uint256"},
 	{Name: "makerTraits", Type: "uint256"},
 }
+
+type OrderHashType struct {
+	Salt         []byte
+	Maker        [32]uint8
+	Receiver     [32]uint8
+	MakingAmount uint64
+	TakingAmount uint64
+}

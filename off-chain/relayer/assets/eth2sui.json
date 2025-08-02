@@ -1,0 +1,99 @@
+{
+    "quoteId": "c696fe51-8844-43a4-9421-94ba4b77f5ba",
+    "srcTokenAmount": "1000000",
+    "dstTokenAmount": "1000000",
+    "presets": {
+        "fast": {
+            "startAmount": "10572996802695832",
+            "secretsCount": 1,
+            "costInDstToken": "2181666219875436",
+            "auctionDuration": 180,
+            "startAuctionIn": 17,
+            "initialRateBump": 710639,
+            "auctionStartAmount": "10572996802695832",
+            "auctionEndAmount": "9871490209590512",
+            "points": [],
+            "gasCostInfo": {
+                "gasPriceEstimate": "0",
+                "gasBumpEstimate": "0"
+            },
+            "allowPartialFills": false,
+            "allowMultipleFills": false
+        },
+        "medium": {
+            "startAmount": "12754662277999739",
+            "secretsCount": 1,
+            "costInDstToken": "2181666219875436",
+            "auctionDuration": 360,
+            "startAuctionIn": 17,
+            "initialRateBump": 2920706,
+            "auctionStartAmount": "12754662277999739",
+            "auctionEndAmount": "9871490209590512",
+            "points": [
+                {
+                    "delay": 24,
+                    "coefficient": 710639
+                }
+            ],
+            "gasCostInfo": {
+                "gasPriceEstimate": "0",
+                "gasBumpEstimate": "0"
+            },
+            "allowPartialFills": false,
+            "allowMultipleFills": false
+        },
+        "slow": {
+            "startAmount": "12754662277999739",
+            "secretsCount": 1,
+            "costInDstToken": "2181666219875436",
+            "auctionDuration": 600,
+            "startAuctionIn": 17,
+            "initialRateBump": 2920706,
+            "auctionStartAmount": "12754662277999739",
+            "auctionEndAmount": "9871490209590512",
+            "points": [
+                {
+                    "delay": 24,
+                    "coefficient": 710639
+                }
+            ],
+            "gasCostInfo": {
+                "gasPriceEstimate": "0",
+                "gasBumpEstimate": "0"
+            },
+            "allowPartialFills": false,
+            "allowMultipleFills": false
+        }
+    },
+    "srcEscrowFactory": "0xa7bCb4EAc8964306F9e3764f67Db6A7af6DdF99A",
+    "dstEscrowFactory": "0x9947401bada3b7918ed6813946e206841e3c8cd890744056e5153c2f3015c7cf",
+    "timeLocks": {
+        "srcWithdrawal": 180,
+        "srcPublicWithdrawal": 612,
+        "srcCancellation": 768,
+        "srcPublicCancellation": 888,
+        "dstWithdrawal": 12,
+        "dstPublicWithdrawal": 432,
+        "dstCancellation": 552
+    },
+    "srcSafetyDeposit": "10000000000000000",
+    "dstSafetyDeposit": "10000000",
+    "whitelist": [
+        "0x5e0c9131ccf3a015fec02078c33fd9d03fc36b23",
+        "0x33b41fe18d3a39046ad672f8a0c8c415454f629c"
+    ],
+    "recommendedPreset": "fast",
+    "prices": {
+        "usd": {
+            "srcToken": "0.9999999609880162",
+            "dstToken": "779.71635393"
+        }
+    },
+    "volume": {
+        "usd": {
+            "srcToken": "10",
+            "dstToken": "9.95"
+        }
+    },
+    "slippage": 5.5
+}

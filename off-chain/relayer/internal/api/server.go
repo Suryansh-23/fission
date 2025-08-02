@@ -16,13 +16,14 @@ import (
 )
 
 type APIServer struct {
-	port         int
-	baseURL      string
-	authKey      string
-	manager      *manager.Manager
-	logger       *log.Logger
-	devMode      bool
-	defaultQuote *common.Quote
+	port          int
+	baseURL       string
+	authKey       string
+	manager       *manager.Manager
+	logger        *log.Logger
+	devMode       bool
+	ethToSuiQuote *common.Quote
+	suiToEthQuote *common.Quote
 }
 
 func NewAPIServer(manager *manager.Manager, logger *log.Logger) *http.Server {
@@ -31,27 +32,39 @@ func NewAPIServer(manager *manager.Manager, logger *log.Logger) *http.Server {
 	authKey := os.Getenv("1INCH_API_KEY")
 	mode := os.Getenv("API_MODE")
 
-	var quote common.Quote
+	var eth2sui common.Quote
+	var sui2eth common.Quote
 	if mode == "DEV" {
-		file, err := os.ReadFile(path.Join("assets", "quote.json"))
+		file, err := os.ReadFile(path.Join("assets", "eth2sui.json"))
 		if err != nil {
 			logger.Fatal("Error opening log file:", err)
 		}
 
-		err = json.Unmarshal(file, &quote)
+		err = json.Unmarshal(file, &eth2sui)
+		if err != nil {
+			logger.Fatal("Error unmarshalling quote response:", err)
+		}
+
+		file, err = os.ReadFile(path.Join("assets", "sui2eth.json"))
+		if err != nil {
+			logger.Fatal("Error opening log file:", err)
+		}
+
+		err = json.Unmarshal(file, &sui2eth)
 		if err != nil {
 			logger.Fatal("Error unmarshalling quote response:", err)
 		}
 	}
 
 	newAPIServer := &APIServer{
-		port:         port,
-		baseURL:      baseURL,
-		authKey:      authKey,
-		manager:      manager,
-		logger:       logger,
-		devMode:      mode == "DEV",
-		defaultQuote: &quote,
+		port:          port,
+		baseURL:       baseURL,
+		authKey:       authKey,
+		manager:       manager,
+		logger:        logger,
+		devMode:       mode == "DEV",
+		ethToSuiQuote: &eth2sui,
+		suiToEthQuote: &sui2eth,
 	}
 
 	// Declare Server config

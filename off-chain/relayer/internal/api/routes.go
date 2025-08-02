@@ -81,7 +81,7 @@ func (s *APIServer) GetQuote(c *gin.Context) {
 
 	var quoteResponse common.Quote
 	if !s.devMode {
-		s.logger.Println("Running in dev mode, using default quote response")
+		s.logger.Println("Running in prod mode, Fetching quote from 1inch Fusion+ API")
 
 		// build the url string to fetch
 		urlString, err := buildQuoteRequestParams(s.baseURL, queryParams)
@@ -112,7 +112,13 @@ func (s *APIServer) GetQuote(c *gin.Context) {
 			return
 		}
 	} else {
-		quoteResponse = *s.defaultQuote
+		s.logger.Println("Running in dev mode, using default quote response")
+
+		if queryParams.SrcChain == "1" {
+			quoteResponse = *s.ethToSuiQuote
+		} else {
+			quoteResponse = *s.suiToEthQuote
+		}
 		quoteResponse.QuoteID = uuid.New()
 	}
 
@@ -139,7 +145,7 @@ func (s *APIServer) SubmitOrder(c *gin.Context) {
 		return
 	}
 	s.logger.Printf("Received order @ ID: %s", order.QuoteID)
-	s.logger.Println("Order details:", order.SecretHashes)
+	s.logger.Printf("Order details: %+v", order.LimitOrder)
 
 	hash, err := hash.GetOrderHashForLimitOrder(order.SrcChainID, order.LimitOrder)
 	if err != nil {

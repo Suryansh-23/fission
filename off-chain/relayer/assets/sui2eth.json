@@ -1,11 +1,11 @@
 {
     "quoteId": "c696fe51-8844-43a4-9421-94ba4b77f5ba",
-    "srcTokenAmount": "10000000",
-    "dstTokenAmount": "10572996668448319",
+    "srcTokenAmount": "1000000",
+    "dstTokenAmount": "1000000",
     "presets": {
         "fast": {
             "startAmount": "10572996802695832",
-            "secretsCount": 3,
+            "secretsCount": 1,
             "costInDstToken": "2181666219875436",
             "auctionDuration": 180,
             "startAuctionIn": 17,
@@ -17,8 +17,8 @@
                 "gasPriceEstimate": "0",
                 "gasBumpEstimate": "0"
             },
-            "allowPartialFills": true,
-            "allowMultipleFills": true
+            "allowPartialFills": false,
+            "allowMultipleFills": false
         },
         "medium": {
             "startAmount": "12754662277999739",
@@ -65,8 +65,8 @@
             "allowMultipleFills": false
         }
     },
-    "srcEscrowFactory": "0xa7bcb4eac8964306f9e3764f67db6a7af6ddf99a",
-    "dstEscrowFactory": "0xa7bcb4eac8964306f9e3764f67db6a7af6ddf99a",
+    "srcEscrowFactory": "0x9947401bada3b7918ed6813946e206841e3c8cd890744056e5153c2f3015c7cf",
+    "dstEscrowFactory": "0xa7bCb4EAc8964306F9e3764f67Db6A7af6DdF99A",
     "timeLocks": {
         "srcWithdrawal": 180,
         "srcPublicWithdrawal": 612,
@@ -76,8 +76,8 @@
         "dstPublicWithdrawal": 432,
         "dstCancellation": 552
     },
-    "srcSafetyDeposit": "35490000017850000",
-    "dstSafetyDeposit": "1050000000000000",
+    "srcSafetyDeposit": "10000000000000000",
+    "dstSafetyDeposit": "10000000",
     "whitelist": [
         "0x5e0c9131ccf3a015fec02078c33fd9d03fc36b23",
         "0x33b41fe18d3a39046ad672f8a0c8c415454f629c"
