@@ -9,6 +9,8 @@ Fission enables secure, decentralized token exchanges across Ethereum and Sui bl
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.23-red.svg)](https://soliditylang.org/)
 [![Move](https://img.shields.io/badge/Move-Sui-blue.svg)](https://docs.sui.io/concepts/sui-move-concepts)
 
+![UI](image.png)
+
 ## 🌟 Key Features
 
 - **🔒 Trustless**: No custody of funds by centralized parties
