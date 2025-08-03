@@ -29,7 +29,17 @@ Fission operates through a **dual-escrow system**:
 
 **📖 For detailed technical specifications, see [Architecture Documentation](./architecture.md)**
 
-## 🚀 Quick Start
+## � Contract Calls Flow
+
+The following diagrams illustrate the contract interaction flows for cross-chain atomic swaps between Ethereum and Sui:
+
+### General Cross-Chain Flow
+![Cross-Chain Flow](./doc/image_flow.png)
+
+### Sui-Specific Contract Interactions
+![Sui Contract Flow](./doc/image_sui.png)
+
+## �🚀 Quick Start
 
 ### Prerequisites
 
@@ -184,21 +194,3 @@ forge test -vvv
 - **Ethereum**: Sepolia, Arbitrum Sepolia
 - **Sui**: Testnet, Devnet
 
-## 🔐 Security
-
-### Audit Status
-- [ ] Smart contract audits pending
-- [ ] Economic security analysis in progress
-
-### Bug Bounty
-We take security seriously. If you discover vulnerabilities, please report them to:
-- **Email**: security@fission.exchange
-- **GPG Key**: [Public Key](./security/pgp-key.asc)
-
-### Security Features
-- **Time-locked escrows** with escalating withdrawal permissions
-- **Cryptographic hash locks** ensuring atomic execution
-- **Economic incentives** via safety deposits
-- **Multi-signature** resolver registration and management
-
-This project is licensed under the [MIT License](./LICENSE).
