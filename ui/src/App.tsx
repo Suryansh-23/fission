@@ -40,7 +40,7 @@ const tenderlyFork = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ['https://virtual.mainnet.eu.rpc.tenderly.co/1489665e-c55e-4476-b6d7-afa0b1c48342'], 
+      http: ['https://virtual.mainnet.eu.rpc.tenderly.co/da81d6ba-6d98-4a8d-af4c-aec651e13ac5'], 
     },
   },
   blockExplorers: {
@@ -101,7 +101,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <WagmiProvider config={wagmiConfig}>
         <RainbowKitProvider>
-          <SuiClientProvider networks={networkConfig} defaultNetwork="devnet">
+          <SuiClientProvider networks={networkConfig} defaultNetwork="testnet">
             <WalletProvider 
               autoConnect={true}
               enableUnsafeBurner={true}

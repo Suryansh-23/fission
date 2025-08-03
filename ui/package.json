@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@1inch/cross-chain-sdk": "^0.1.15",
+    "@1inch/cross-chain-sdk": "file:../../cross-chain-sdk",
     "@mysten/dapp-kit": "^0.17.2",
     "@mysten/sui": "^1.37.1",
     "@rainbow-me/rainbowkit": "^2.2.8",

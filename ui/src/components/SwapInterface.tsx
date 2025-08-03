@@ -1,92 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ArrowUpDown, Clock, CheckCircle, Loader } from 'lucide-react';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { ChevronDown, ArrowUpDown, Clock, CheckCircle, Loader, AlertTriangle } from 'lucide-react';
 import { useAccount, useWalletClient, usePublicClient } from 'wagmi';
+import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { DEFAULT_EVM_TOKENS, DEFAULT_SUI_TOKENS } from '../constants/tokens';
-import crossChainSDKInstance, { OrderStatus, PresetEnum } from '../services/crossChainSDK';
-import type { Quote } from '@1inch/cross-chain-sdk';
+import { 
+  OrderStatus, 
+  type Quote
+} from '../blockchain/sdk/cross-chain-service';
 
-// Mock quote data for testing
-const MOCK_QUOTE_DATA = {
-  "quoteId": "c696fe51-8844-43a4-9421-94ba4b77f5ba",
-  "srcTokenAmount": "1000000",
-  "dstTokenAmount": "1000000",
-  "presets": {
-    "fast": {
-      "startAmount": "10572996802695832",
-      "secretsCount": 1,
-      "costInDstToken": "2181666219875436",
-      "auctionDuration": 180,
-      "startAuctionIn": 17,
-      "initialRateBump": 710639,
-      "auctionStartAmount": "10572996802695832",
-      "auctionEndAmount": "9871490209590512",
-      "points": [],
-      "gasCostInfo": {
-        "gasPriceEstimate": "0",
-        "gasBumpEstimate": "0"
-      },
-      "allowPartialFills": false,
-      "allowMultipleFills": false
-    },
-    "medium": {
-      "startAmount": "12754662277999739",
-      "secretsCount": 1,
-      "costInDstToken": "2181666219875436",
-      "auctionDuration": 360,
-      "startAuctionIn": 17,
-      "initialRateBump": 2920706,
-      "auctionStartAmount": "12754662277999739",
-      "auctionEndAmount": "9871490209590512",
-      "points": [
-        {
-          "delay": 24,
-          "coefficient": 710639
-        }
-      ],
-      "gasCostInfo": {
-        "gasPriceEstimate": "0",
-        "gasBumpEstimate": "0"
-      },
-      "allowPartialFills": false,
-      "allowMultipleFills": false
-    },
-    "slow": {
-      "startAmount": "12754662277999739",
-      "secretsCount": 1,
-      "costInDstToken": "2181666219875436",
-      "auctionDuration": 600,
-      "startAuctionIn": 17,
-      "initialRateBump": 2920706,
-      "auctionStartAmount": "12754662277999739",
-      "auctionEndAmount": "9871490209590512",
-      "points": [
-        {
-          "delay": 24,
-          "coefficient": 710639
-        }
-      ],
-      "gasCostInfo": {
-        "gasPriceEstimate": "0",
-        "gasBumpEstimate": "0"
-      },
-      "allowPartialFills": false,
-      "allowMultipleFills": false
-    }
-  },
-  "recommendedPreset": "fast",
-  "slippage": 5.5
-};
-
+// Token interface
 interface Token {
   symbol: string;
   name: string;
-  icon: string;
   decimals: number;
   address: string;
   chainId: number;
+  logoUri?: string;
+  icon?: string;
 }
 
+// Chain interface
 interface Chain {
   name: string;
   symbol: string;
@@ -95,7 +28,7 @@ interface Chain {
 
 const chains: Chain[] = [
   { name: 'Ethereum', symbol: 'ETH', chainId: 1 },
-  { name: 'Sui', symbol: 'SUI', chainId: 0 },
+  { name: 'Sui', symbol: 'SUI', chainId: 0 }, // Using 0 for Sui as in original
 ];
 
 // Helper functions to get tokens for specific chains
@@ -104,41 +37,57 @@ const getTokensForChain = (chainId: number): Token[] => {
     // Sui chain - only SUI and USDC
     return DEFAULT_SUI_TOKENS;
   } else if (chainId === 1) {
-    // Ethereum chain - ETH, USDC, WBTC
+    // Ethereum chain - USDC, WETH, WBTC
     return DEFAULT_EVM_TOKENS;
   }
   return [];
 };
 
+// Order status UI mapping - using string keys to match SDK values
+const ORDER_STATUS_UI: Record<string, { label: string; color: string; icon: React.ComponentType<any> }> = {
+  'pending': { label: 'Pending', color: 'text-yellow-400', icon: Clock },
+  'executed': { label: 'Completed', color: 'text-green-400', icon: CheckCircle },
+  'expired': { label: 'Expired', color: 'text-red-400', icon: AlertTriangle },
+  'refunded': { label: 'Refunded', color: 'text-orange-400', icon: AlertTriangle },
+  'cancelled': { label: 'Cancelled', color: 'text-gray-400', icon: AlertTriangle },
+  'refunding': { label: 'Refunding', color: 'text-orange-400', icon: Clock },
+};
+
 const SwapInterface: React.FC = () => {
-  const suiAccount = useCurrentAccount();
-  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
+  // Wallet connections
   const { address: evmAddress } = useAccount();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
-  
+  const suiAccount = useCurrentAccount();
+  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
+
+  // Chain and token state
   const [payChain, setPayChain] = useState<Chain>(chains[0]); // Default to Ethereum
   const [receiveChain, setReceiveChain] = useState<Chain>(chains[1]); // Default to Sui
   const [payToken, setPayToken] = useState<Token>(getTokensForChain(chains[0].chainId)[0]); // First token of Ethereum
   const [receiveToken, setReceiveToken] = useState<Token | null>(null);
-  const [payAmount, setPayAmount] = useState<string>('');
-  const [receiveAmount, setReceiveAmount] = useState<string>('0');
-  const [isQuoted, setIsQuoted] = useState<boolean>(false);
-  const [singleFill, setSingleFill] = useState<boolean>(true);
-  const [showPayTokens, setShowPayTokens] = useState<boolean>(false);
-  const [showReceiveTokens, setShowReceiveTokens] = useState<boolean>(false);
-  const [showPayChains, setShowPayChains] = useState<boolean>(false);
-  const [showReceiveChains, setShowReceiveChains] = useState<boolean>(false);
-  const [slippage, setSlippage] = useState<string>('0.5');
-  const [showSettings, setShowSettings] = useState<boolean>(false);
-
-  // Cross-chain swap state
+  
+  // UI State
+  const [payAmount, setPayAmount] = useState('');
+  const [receiveAmount, setReceiveAmount] = useState('0');
+  const [isQuoted, setIsQuoted] = useState(false);
+  const [singleFill, setSingleFill] = useState(true);
+  const [showPayTokens, setShowPayTokens] = useState(false);
+  const [showReceiveTokens, setShowReceiveTokens] = useState(false);
+  const [showPayChains, setShowPayChains] = useState(false);
+  const [showReceiveChains, setShowReceiveChains] = useState(false);
+  const [slippage, setSlippage] = useState('0.5');
+  const [showSettings, setShowSettings] = useState(false);
+  
+  // Swap State
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+  const [isProcessingSwap, setIsProcessingSwap] = useState(false);
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [quoteDetails, setQuoteDetails] = useState<any>(null); // For storing detailed quote info
-  const [isLoadingQuote, setIsLoadingQuote] = useState<boolean>(false);
-  const [isProcessingSwap, setIsProcessingSwap] = useState<boolean>(false);
   const [swapStatus, setSwapStatus] = useState<OrderStatus | null>(null);
   const [currentOrderHash, setCurrentOrderHash] = useState<string | null>(null);
+  
+  // Error handling
+  const [error, setError] = useState<string | null>(null);
 
   // Update tokens when chain changes
   useEffect(() => {
@@ -183,11 +132,13 @@ const SwapInterface: React.FC = () => {
 
     const walletAddress = payChain.chainId === 0 ? suiAccount?.address : evmAddress;
     if (!walletAddress) {
-      alert('Please connect your wallet first');
+      setError('Please connect your wallet first');
       return;
     }
 
     setIsLoadingQuote(true);
+    setError(null);
+
     try {
       // Calculate amounts based on input
       const inputAmount = parseFloat(payAmount);
@@ -207,31 +158,35 @@ const SwapInterface: React.FC = () => {
       });
       console.log('[SwapInterface] ================================');
       
-      // Using mock data for now since SDK is not working
+      // For now, simulate quote with mock data
       await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API delay
       
       // Create mock quote with dynamic amounts
       const mockQuote = {
-        ...MOCK_QUOTE_DATA,
-        srcTokenAmount: (BigInt(Math.floor(inputAmount * (10 ** payToken.decimals)))).toString(),
-        dstTokenAmount: (BigInt(Math.floor(outputAmount * (10 ** receiveToken.decimals)))).toString(),
-        quoteId: `mock-${Date.now()}`,
+        quoteId: `quote-${Date.now()}`,
+        srcTokenAmount: (inputAmount * (10 ** payToken.decimals)).toString(),
+        dstTokenAmount: (outputAmount * (10 ** receiveToken.decimals)).toString(),
         srcChainId: payChain.chainId,
         dstChainId: receiveChain.chainId,
-        // Add token addresses for proper mapping
         srcTokenAddress: payToken.address,
         dstTokenAddress: receiveToken.address,
+        presets: {
+          fast: {
+            secretsCount: 1,
+            auctionDuration: 180,
+            startAmount: (inputAmount * (10 ** payToken.decimals)).toString(),
+          },
+        },
       };
       
       setQuote(mockQuote as any);
-      setQuoteDetails(mockQuote);
       setReceiveAmount(outputAmount.toString());
       setIsQuoted(true);
       
       console.log('✅ Mock quote received:', mockQuote.quoteId);
-    } catch (error) {
-      console.error('❌ Failed to get quote:', error);
-      alert('Failed to get quote. Please try again.');
+    } catch (err) {
+      console.error('❌ Failed to get quote:', err);
+      setError(err instanceof Error ? err.message : 'Failed to get quote');
     } finally {
       setIsLoadingQuote(false);
     }
@@ -242,132 +197,74 @@ const SwapInterface: React.FC = () => {
 
     const walletAddress = payChain.chainId === 0 ? suiAccount?.address : evmAddress;
     if (!walletAddress) {
-      alert('Please connect your wallet first');
+      setError('Please connect your wallet first');
       return;
     }
 
     setIsProcessingSwap(true);
+    setError(null);
+
     try {
       console.log('🚀 Starting cross-chain swap...');
+      console.log('[SwapInterface] Source chain:', payChain.name);
+      console.log('[SwapInterface] Destination chain:', receiveChain.name);
       
-      // Step 1: Generate secrets
-      const presetKey = singleFill ? PresetEnum.fast : PresetEnum.medium;
-      const secretCount = quote.presets[presetKey].secretsCount;
-      const generatedSecrets = crossChainSDKInstance.generateSecrets(secretCount);
+      // Step 1: Handle source chain transaction (approve or move call)
+      if (payChain.chainId === 0) {
+        // Sui source - call Move contract
+        console.log('[SwapInterface] Calling Sui Move contract for order transfer...');
+        
+        // TODO: Implement Sui Move contract call
+        // This would call the resolver contract to transfer maker funds
+        const moveCallResult = await callSuiMoveContract({
+          payToken,
+          amount: payAmount,
+          walletAddress,
+          signAndExecuteTransaction,
+        });
+        
+        console.log('[SwapInterface] Sui Move call result:', moveCallResult);
+        
+      } else {
+        // Ethereum source - call ERC20 approve
+        console.log('[SwapInterface] Calling ERC20 approve for token transfer...');
+        
+        // TODO: Implement ERC20 approve call
+        const approveResult = await callERC20Approve({
+          tokenAddress: payToken.address,
+          amount: payAmount,
+          decimals: payToken.decimals,
+          walletClient,
+          publicClient,
+          account: evmAddress,
+        });
+        
+        console.log('[SwapInterface] ERC20 approve result:', approveResult);
+      }
+
+      // Step 2: Create and submit order (mock for now)
+      const orderHash = `order-${Date.now()}`;
+      setCurrentOrderHash(orderHash);
+      setSwapStatus('pending' as OrderStatus);
       
-      // Step 2: Create hash lock
-      const hashLock = crossChainSDKInstance.createHashLock(generatedSecrets);
-      const secretHashes = crossChainSDKInstance.hashSecrets(generatedSecrets);
+      console.log('[SwapInterface] Order created with hash:', orderHash);
       
-      // Step 3: Create order
-      console.log('[SwapInterface] Creating cross-chain order...');
-      console.log('[SwapInterface] Source chain:', payChain.name, '(ID:', quote.srcChainId, ')');
-      console.log('[SwapInterface] Destination chain:', receiveChain.name, '(ID:', quote.dstChainId, ')');
-      console.log('[SwapInterface] Fill preferences - Single:', singleFill, 'Multi:', !singleFill);
-      
-      // Set fill preferences in SDK
-      console.log('[SwapInterface] Toggle state - singleFill:', singleFill);
-      console.log('[SwapInterface] UI Toggle: When singleFill is', singleFill, ', multifill should be', !singleFill);
-      console.log('[SwapInterface] Setting allowPartialFills to: true (always)');
-      console.log('[SwapInterface] Setting allowMultipleFills to:', !singleFill, '(inverse of singleFill)');
-      
-      crossChainSDKInstance.setFillPreferences({
-        allowPartialFills: true, // Always true as per requirement
-        allowMultipleFills: !singleFill // Based on toggle button: when singleFill=true, multiFills=false
-      });
-      
-      const orderInfo = await crossChainSDKInstance.createOrder(quote, {
-        walletAddress: walletAddress,
-        hashLock: hashLock,
-        preset: PresetEnum.fast, // Use SDK enum
-        source: 'fusion-ui',
-        secretHashes: secretHashes,
-        nonce: BigInt(Date.now())
-      });
-      
-      setCurrentOrderHash(orderInfo.hash);
-      console.log('[SwapInterface] Order created successfully');
-      console.log('[SwapInterface] Order hash:', orderInfo.hash);
-      console.log('[SwapInterface] Quote ID:', orderInfo.quoteId);
-      
-      // Step 4: Submit order
-      console.log('[SwapInterface] Submitting order to blockchain...');
-      
-      // For Sui orders, we need to pass the EVM address as receiver and the Sui wallet for signing
-      // For EVM orders, we need to pass the Sui address as receiver
-      const receiverAddress = payChain.chainId === 0 ? evmAddress : suiAccount?.address;
-      const suiWallet = payChain.chainId === 0 ? { 
-        signAndExecuteTransaction: (params: any) => {
-          return new Promise((resolve, reject) => {
-            signAndExecuteTransaction(params, {
-              onSuccess: (result) => {
-                console.log('[SwapInterface] Wallet signing successful:', result);
-                resolve(result);
-              },
-              onError: (error) => {
-                console.error('[SwapInterface] Wallet signing failed:', error);
-                reject(error);
-              }
-            });
-          });
-        }
-      } : undefined;
-      
-      console.log('[SwapInterface] Sui wallet object:', suiWallet);
-      console.log('[SwapInterface] Receiver address for cross-chain:', {
-        payChain: payChain.name,
-        receiveChain: receiveChain.name,
-        receiverAddress,
-        reasoning: payChain.chainId === 0 ? 'Sui→EVM: receiver=EVM address' : 'EVM→Sui: receiver=Sui address'
-      });
-      
-      // Prepare EVM clients for approval (if needed)
-      const evmClients = payChain.chainId !== 0 && walletClient && publicClient && evmAddress ? {
-        walletClient,
-        publicClient,
-        account: evmAddress as string
-      } : undefined;
-      
-      console.log('[SwapInterface] EVM clients prepared:', !!evmClients);
-      
-      await crossChainSDKInstance.submitOrder(
-        quote.srcChainId,
-        orderInfo.order,
-        orderInfo.quoteId,
-        secretHashes,
-        receiverAddress,
-        { payToken, receiveToken }, // Pass selected tokens for proper mapping
-        suiWallet, // Pass connected Sui wallet for signing
-        evmClients // Pass EVM clients for approval
-      );
-      
-      console.log('[SwapInterface] Order submitted successfully');
-      
-      // Step 5: Wait for completion
-      const finalStatus = await crossChainSDKInstance.waitForOrderCompletion(
-        orderInfo.hash,
-        generatedSecrets,
-        (status: OrderStatus) => {
-          setSwapStatus(status);
-          console.log('📊 Order status update:', status);
-        }
-      );
-      
-      setSwapStatus(finalStatus.status as OrderStatus);
-      console.log('🏁 Swap completed with status:', finalStatus.status);
-      
-      // Reset UI after successful swap
-      if (finalStatus.status === OrderStatus.Executed) {
+      // Step 3: Simulate order completion
+      setTimeout(() => {
+        setSwapStatus('executed' as OrderStatus);
+        setIsProcessingSwap(false);
+        console.log('✅ Swap completed successfully!');
+        
+        // Reset UI after successful swap
         setIsQuoted(false);
         setPayAmount('');
         setReceiveAmount('0');
         alert('Swap completed successfully!');
-      }
+      }, 3000);
       
-    } catch (error) {
-      console.error('❌ Swap failed:', error);
-      alert('Swap failed. Please try again.');
-    } finally {
+    } catch (err) {
+      console.error('❌ Swap failed:', err);
+      setError(err instanceof Error ? err.message : 'Swap failed. Please try again.');
       setIsProcessingSwap(false);
     }
   };
@@ -409,12 +306,6 @@ const SwapInterface: React.FC = () => {
                 onClick={() => {
                   const newSingleFill = !singleFill;
                   console.log('[SwapInterface] Toggle clicked - changing singleFill from', singleFill, 'to', newSingleFill);
-                  console.log('[SwapInterface] This means allowMultipleFills will be:', !newSingleFill);
-                  if (newSingleFill) {
-                    console.log('[SwapInterface] User selected: SINGLE FILL (allowMultipleFills = false)');
-                  } else {
-                    console.log('[SwapInterface] User selected: MULTI FILL (allowMultipleFills = true)');
-                  }
                   setSingleFill(newSingleFill);
                 }}
                 className={`w-12 h-7 rounded-full transition-colors duration-200 ${
@@ -448,297 +339,253 @@ const SwapInterface: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="text-gray-400 text-sm mb-2 block">Slippage Tolerance</label>
-                <div className="flex items-center space-x-2">
-                  {['0.1', '0.5', '1.0'].map((value) => (
+                <div className="flex space-x-2">
+                  {['0.1', '0.5', '1.0'].map((preset) => (
                     <button
-                      key={value}
-                      onClick={() => setSlippage(value)}
+                      key={preset}
+                      onClick={() => setSlippage(preset)}
                       className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                        slippage === value 
+                        slippage === preset 
                           ? 'bg-blue-600 text-white' 
-                          : 'bg-gray-700/50 text-gray-300 hover:bg-gray-700'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                       }`}
                     >
-                      {value}%
+                      {preset}%
                     </button>
                   ))}
                   <input
                     type="number"
                     value={slippage}
                     onChange={(e) => setSlippage(e.target.value)}
-                    className="bg-gray-700/50 text-white px-3 py-2 rounded-lg text-sm w-20 outline-none"
+                    className="px-3 py-2 bg-gray-700 text-white rounded-lg text-sm w-20"
                     placeholder="Custom"
                     step="0.1"
-                    min="0.1"
+                    min="0"
                     max="50"
                   />
-                  <span className="text-gray-400 text-sm">%</span>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Swap Status Display */}
-        {(isProcessingSwap || swapStatus) && (
-          <div className="bg-blue-800/30 border border-blue-700/50 rounded-xl p-4 mb-4">
-            <div className="flex items-center space-x-3">
-              {isProcessingSwap ? (
-                <Loader className="w-5 h-5 text-blue-400 animate-spin" />
-              ) : swapStatus === OrderStatus.Executed ? (
-                <CheckCircle className="w-5 h-5 text-green-400" />
-              ) : (
-                <Clock className="w-5 h-5 text-yellow-400" />
-              )}
-              <div>
-                <div className="text-white font-medium">
-                  {isProcessingSwap ? 'Processing Swap...' : `Status: ${swapStatus}`}
-                </div>
-                <div className="text-gray-400 text-sm">
-                  {isProcessingSwap 
-                    ? 'Creating order and submitting to cross-chain protocol'
-                    : currentOrderHash && `Order: ${currentOrderHash.slice(0, 10)}...`
-                  }
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Quote Details */}
-        {isQuoted && quoteDetails && (
-          <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4 mb-4">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-white text-base font-medium">Quote Details</span>
-            </div>
-            
-            {(() => {
-              const recommendedPreset = quoteDetails.presets[quoteDetails.recommendedPreset];
-              return (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Rate</span>
-                    <span className="text-white">1 {payToken.symbol} = {(parseFloat(receiveAmount) / parseFloat(payAmount)).toFixed(6)} {receiveToken?.symbol}</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Slippage</span>
-                    <span className="text-white">{quoteDetails.slippage}%</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Number of Fills</span>
-                    <span className="text-white">{recommendedPreset.secretsCount}</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Preset</span>
-                    <span className="text-white capitalize">{quoteDetails.recommendedPreset}</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Gas Cost Estimate</span>
-                    <span className="text-white">
-                      {recommendedPreset.gasCostInfo.gasPriceEstimate === "0" ? "Free" : `${recommendedPreset.gasCostInfo.gasPriceEstimate} ETH`}
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* You Pay Section */}
-        <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4 mb-2">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-gray-400 text-base font-medium">You pay</span>
-            <div className="relative">
-              <button
-                onClick={() => setShowPayChains(!showPayChains)}
-                className="text-gray-400 hover:text-white text-sm flex items-center space-x-1 transition-colors"
-              >
-                <span>{payChain.name}</span>
-                <ChevronDown className="w-4 h-4" />
-              </button>
-              {showPayChains && (
-                <div className="absolute top-full right-0 mt-2 w-32 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20">
-                  {chains.map((chain) => (
-                    <button
-                      key={chain.chainId}
-                      onClick={() => {
-                        setPayChain(chain);
-                        setShowPayChains(false);
-                      }}
-                      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                        chain.chainId === payChain.chainId
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-300 hover:bg-gray-700/50'
-                      }`}
-                    >
-                      {chain.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+        {/* Pay Section */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-gray-400 text-sm">You pay</span>
           </div>
           
-          <div className="flex items-center justify-between">
-            <div className="relative">
-              <button
-                onClick={() => setShowPayTokens(!showPayTokens)}
-                className="flex items-center space-x-3 bg-gray-700/50 hover:bg-gray-700 px-4 py-3 rounded-lg transition-colors"
-              >
-                <span className="text-2xl">{payToken.icon}</span>
-                <div className="text-left">
-                  <div className="text-white font-semibold text-lg">{payToken.symbol}</div>
-                  <div className="text-gray-400 text-sm">on {payChain.name}</div>
-                </div>
-                <ChevronDown className="w-5 h-5 text-gray-400" />
-              </button>
-              
-              {showPayTokens && (
-                <div className="absolute top-full mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10">
-                  {availablePayTokens.map((token) => (
-                    <button
-                      key={token.symbol}
-                      onClick={() => {
-                        setPayToken(token);
-                        setShowPayTokens(false);
-                        setIsQuoted(false); // Reset quote when token changes
-                        setQuote(null);
-                      }}
-                      className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-gray-700/50 transition-colors"
-                    >
-                      <span className="text-xl">{token.icon}</span>
-                      <div className="text-left">
-                        <div className="text-white text-base font-medium">{token.symbol}</div>
-                        <div className="text-gray-400 text-sm">{token.name}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+          <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              {/* Chain Selector */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowPayChains(!showPayChains)}
+                  className="flex items-center space-x-2 bg-gray-700/50 hover:bg-gray-700 rounded-lg px-3 py-2 transition-colors"
+                >
+                  <span className="text-white text-sm font-medium">{payChain.name}</span>
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                </button>
+                
+                {showPayChains && (
+                  <div className="absolute top-full left-0 mt-2 w-40 bg-gray-800 rounded-lg border border-gray-700 shadow-xl z-50">
+                    {chains.filter(chain => chain.chainId !== receiveChain.chainId).map((chain) => (
+                      <button
+                        key={chain.chainId}
+                        onClick={() => {
+                          setPayChain(chain);
+                          setShowPayChains(false);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-700 text-white text-sm transition-colors"
+                      >
+                        {chain.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Token Selector */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowPayTokens(!showPayTokens)}
+                  className="flex items-center space-x-2 bg-gray-700/50 hover:bg-gray-700 rounded-lg px-3 py-2 transition-colors"
+                >
+                  <span className="font-medium text-white">{payToken.symbol}</span>
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                </button>
+                
+                {showPayTokens && (
+                  <div className="absolute top-full right-0 mt-2 w-64 bg-gray-800 rounded-lg border border-gray-700 shadow-xl z-50 max-h-60 overflow-y-auto">
+                    {availablePayTokens.map((token) => (
+                      <button
+                        key={token.address}
+                        onClick={() => {
+                          setPayToken(token);
+                          setShowPayTokens(false);
+                          setIsQuoted(false);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-700 flex items-center space-x-3 transition-colors"
+                      >
+                        <div>
+                          <div className="font-medium text-white">{token.symbol}</div>
+                          <div className="text-sm text-gray-400">{token.name}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             
-            <div className="text-right">
-              <input
-                type="number"
-                value={payAmount}
-                onChange={(e) => setPayAmount(e.target.value)}
-                placeholder="0"
-                className="bg-transparent text-white text-3xl font-medium text-right outline-none w-40"
-              />
-              <div className="text-gray-400 text-base">Balance: --</div>
-            </div>
+            <input
+              type="number"
+              value={payAmount}
+              onChange={(e) => {
+                setPayAmount(e.target.value);
+                setIsQuoted(false);
+              }}
+              placeholder="0.0"
+              className="w-full bg-transparent text-white text-2xl font-semibold placeholder-gray-400 outline-none"
+              disabled={isLoadingQuote || isProcessingSwap}
+            />
           </div>
         </div>
 
         {/* Switch Button */}
-        <div className="flex justify-center -my-2 relative z-10">
+        <div className="flex justify-center my-4">
           <button
             onClick={switchTokens}
-            className="bg-gray-800 border border-gray-700 p-3 rounded-xl hover:bg-gray-700 transition-colors"
+            disabled={isLoadingQuote || isProcessingSwap}
+            className="p-2 bg-blue-600/20 hover:bg-blue-600/30 rounded-lg transition-colors disabled:opacity-50"
           >
-            <ArrowUpDown className="w-5 h-5 text-gray-400" />
+            <ArrowUpDown className="w-5 h-5 text-blue-400" />
           </button>
         </div>
 
-        {/* You Receive Section */}
-        <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-gray-400 text-base font-medium">You receive</span>
-            <div className="relative">
-              <button
-                onClick={() => setShowReceiveChains(!showReceiveChains)}
-                className="text-gray-400 hover:text-white text-sm flex items-center space-x-1 transition-colors"
-              >
-                <span>{receiveChain.name}</span>
-                <ChevronDown className="w-4 h-4" />
-              </button>
-              {showReceiveChains && (
-                <div className="absolute top-full right-0 mt-2 w-32 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20">
-                  {chains.filter(chain => chain.chainId !== payChain.chainId).map((chain) => (
-                    <button
-                      key={chain.chainId}
-                      onClick={() => {
-                        setReceiveChain(chain);
-                        setShowReceiveChains(false);
-                      }}
-                      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                        chain.chainId === receiveChain.chainId
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-300 hover:bg-gray-700/50'
-                      }`}
-                    >
-                      {chain.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+        {/* Receive Section */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-gray-400 text-sm">You receive</span>
           </div>
           
-          <div className="flex items-center justify-between">
-            <div className="relative">
-              {receiveToken ? (
+          <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              {/* Chain Selector */}
+              <div className="relative">
                 <button
-                  onClick={() => setShowReceiveTokens(!showReceiveTokens)}
-                  className="flex items-center space-x-3 bg-gray-700/50 hover:bg-gray-700 px-4 py-3 rounded-lg transition-colors"
+                  onClick={() => setShowReceiveChains(!showReceiveChains)}
+                  className="flex items-center space-x-2 bg-gray-700/50 hover:bg-gray-700 rounded-lg px-3 py-2 transition-colors"
                 >
-                  <span className="text-2xl">{receiveToken.icon}</span>
-                  <div className="text-left">
-                    <div className="text-white font-semibold text-lg">{receiveToken.symbol}</div>
-                    <div className="text-gray-400 text-sm">on {receiveChain.name}</div>
+                  <span className="text-white text-sm font-medium">{receiveChain.name}</span>
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                </button>
+                
+                {showReceiveChains && (
+                  <div className="absolute top-full left-0 mt-2 w-40 bg-gray-800 rounded-lg border border-gray-700 shadow-xl z-50">
+                    {chains.filter(chain => chain.chainId !== payChain.chainId).map((chain) => (
+                      <button
+                        key={chain.chainId}
+                        onClick={() => {
+                          setReceiveChain(chain);
+                          setShowReceiveChains(false);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-700 text-white text-sm transition-colors"
+                      >
+                        {chain.name}
+                      </button>
+                    ))}
                   </div>
-                  <ChevronDown className="w-5 h-5 text-gray-400" />
-                </button>
-              ) : (
+                )}
+              </div>
+
+              {/* Token Selector */}
+              <div className="relative">
                 <button
                   onClick={() => setShowReceiveTokens(!showReceiveTokens)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-lg transition-colors flex items-center space-x-2 text-base font-medium"
+                  className="flex items-center space-x-2 bg-gray-700/50 hover:bg-gray-700 rounded-lg px-3 py-2 transition-colors"
                 >
-                  <span>Select a token</span>
-                  <ChevronDown className="w-5 h-5" />
+                  <span className="font-medium text-white">
+                    {receiveToken ? receiveToken.symbol : 'Select token'}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
                 </button>
-              )}
-              
-              {showReceiveTokens && (
-                <div className="absolute top-full mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10">
-                  {availableReceiveTokens.map((token) => (
-                    <button
-                      key={`${token.symbol}-${token.chainId}`}
-                      onClick={() => {
-                        setReceiveToken(token);
-                        setShowReceiveTokens(false);
-                        setIsQuoted(false); // Reset quote when token changes
-                        setQuote(null);
-                      }}
-                      className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-gray-700/50 transition-colors"
-                    >
-                      <span className="text-xl">{token.icon}</span>
-                      <div className="text-left">
-                        <div className="text-white text-base font-medium">{token.symbol}</div>
-                        <div className="text-gray-400 text-sm">{token.name}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+                
+                {showReceiveTokens && (
+                  <div className="absolute top-full right-0 mt-2 w-64 bg-gray-800 rounded-lg border border-gray-700 shadow-xl z-50 max-h-60 overflow-y-auto">
+                    {availableReceiveTokens.map((token) => (
+                      <button
+                        key={token.address}
+                        onClick={() => {
+                          setReceiveToken(token);
+                          setShowReceiveTokens(false);
+                          setIsQuoted(false);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-700 flex items-center space-x-3 transition-colors"
+                      >
+                        <div>
+                          <div className="font-medium text-white">{token.symbol}</div>
+                          <div className="text-sm text-gray-400">{token.name}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             
-            <div className="text-right">
-              <div className="text-white text-3xl font-medium">{receiveAmount}</div>
+            <div className="text-2xl font-semibold text-gray-400">
+              {receiveAmount}
             </div>
           </div>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
+        )}
+
+        {/* Quote Details */}
+        {quote && (
+          <div className="mb-4 p-3 bg-gray-800/30 border border-gray-700/50 rounded-xl">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-400">Expected Output</span>
+              <span className="text-white">{receiveAmount} {receiveToken?.symbol}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm mt-1">
+              <span className="text-gray-400">Quote ID</span>
+              <span className="text-white text-xs font-mono">{quote.quoteId?.slice(0, 8)}...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Order Status */}
+        {swapStatus && (
+          <div className="mb-4 p-3 bg-blue-600/10 border border-blue-600/20 rounded-xl">
+            <div className="flex items-center space-x-2">
+              {React.createElement(ORDER_STATUS_UI[swapStatus.toLowerCase()]?.icon || Clock, {
+                className: `w-4 h-4 ${ORDER_STATUS_UI[swapStatus.toLowerCase()]?.color || 'text-gray-400'}`
+              })}
+              <span className="text-white text-sm">
+                {ORDER_STATUS_UI[swapStatus.toLowerCase()]?.label || swapStatus}
+              </span>
+            </div>
+            {currentOrderHash && (
+              <p className="text-xs text-gray-400 mt-1 font-mono">
+                Order: {currentOrderHash.slice(0, 10)}...
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Action Button */}
         <div className="space-y-3">
           <button
             onClick={isQuoted ? handleSwap : handleGetQuote}
-            disabled={!payAmount || !receiveToken || isLoadingQuote || isProcessingSwap}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-lg transition-colors flex items-center justify-center space-x-2"
+            disabled={(!payAmount || !receiveToken) || isLoadingQuote || isProcessingSwap}
+            className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors flex items-center justify-center space-x-2"
           >
             {isLoadingQuote ? (
               <>
@@ -779,5 +626,20 @@ const SwapInterface: React.FC = () => {
     </div>
   );
 };
+
+// TODO: Implement these functions
+async function callSuiMoveContract(params: any) {
+  console.log('🔄 Calling Sui Move contract with params:', params);
+  // This will call the resolver Move contract to transfer maker funds
+  // Implementation needed based on your Move contract
+  return { success: true, txHash: 'sui-tx-' + Date.now() };
+}
+
+async function callERC20Approve(params: any) {
+  console.log('🔄 Calling ERC20 approve with params:', params);
+  // This will call the ERC20 approve function
+  // Implementation needed using your ERC20 ABI
+  return { success: true, txHash: 'eth-tx-' + Date.now() };
+}
 
 export default SwapInterface;

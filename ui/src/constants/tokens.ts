@@ -1,7 +1,21 @@
 // TODO: Complete token address mapping for all supported chains
 // This file contains token addresses for EVM and Sui chains
 
-import { NetworkEnum } from '@1inch/cross-chain-sdk';
+// Mock network enum to replace SDK dependency
+export enum NetworkEnum {
+  ETHEREUM = 1,
+  POLYGON = 137,
+  BNB = 56,
+  AVALANCHE = 43114,
+  ARBITRUM = 42161,
+  OPTIMISM = 10,
+  FANTOM = 250,
+  KLAYTN = 8217,
+  AURORA = 1313161554,
+  ZK_SYNC_ERA = 324,
+  BASE = 8453,
+  GNOSIS = 100
+}
 
 export interface TokenInfo {
   symbol: string;

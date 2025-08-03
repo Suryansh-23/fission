@@ -23,7 +23,7 @@ const StarBurst: React.FC<StarBurstProps> = ({ onAnimationComplete }) => {
     const timer = setTimeout(() => {
       setIsVisible(false);
       onAnimationComplete?.();
-    }, 3000); // Increased from 2500ms to 3000ms
+    }, 2000); // Reduced from 3000ms to 2000ms for faster animation
 
     return () => clearTimeout(timer);
   }, [onAnimationComplete]);
