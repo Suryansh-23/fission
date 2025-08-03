@@ -3,8 +3,6 @@ module fusion_plus::order;
 use fusion_plus::auction_calculator::{Self, AuctionDetails};
 use sui::coin::{Self, Coin};
 use sui::event;
-use sui::hash;
-use sui::address;
 
 // Errors
 const EInvalidMakingAmount: u64 = 0;
@@ -29,14 +27,6 @@ public struct Order<phantom T> has key {
     auction_details: AuctionDetails,
 }
 
-public struct OrderHashData has copy, drop {
-    salt: vector<u8>,
-    maker: vector<u8>,
-    receiver: vector<u8>,
-    making_amount: u64,
-    taking_amount: u64,
-}
-
 // Events
 public struct OrderCreated has copy, drop {
     id: ID,
@@ -56,6 +46,7 @@ public entry fun create_order<T>(
     maker_asset: address,
     taker_asset: vector<u8>,
     salt: vector<u8>,
+    order_hash: vector<u8>,
     is_partial_fill_allowed: bool,
     is_multiple_fills_allowed: bool,
     deposit: Coin<T>,
@@ -66,16 +57,6 @@ public entry fun create_order<T>(
     ctx: &mut TxContext,
 ) {
     let making_amount = coin::value(&deposit);
-
-    let data = OrderHashData {
-        salt,
-        maker: address::to_bytes(ctx.sender()),
-        receiver,
-        making_amount,
-        taking_amount,
-    };
-
-    let order_hash = hash::keccak256(&sui::bcs::to_bytes(&data));
 
     let auction_details = auction_calculator::new(
         start_time,
