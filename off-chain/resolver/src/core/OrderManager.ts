@@ -1,18 +1,18 @@
 import {
   AmountMode,
-  Extension,
-  HashLock,
-  TakerTraits,
-  RelayerRequestParams,
-  SupportedChain,
-  SuiAddress,
-  EvmEscrowFactory,
-  EvmEscrowFactoryFacade,
-  EvmCrossChainOrder,
+  DstImmutablesComplement,
   ESCROW_DST_IMPLEMENTATION,
   ESCROW_FACTORY,
   EvmAddress,
-  DstImmutablesComplement,
+  EvmCrossChainOrder,
+  EvmEscrowFactory,
+  EvmEscrowFactoryFacade,
+  Extension,
+  HashLock,
+  RelayerRequestParams,
+  SuiAddress,
+  SupportedChain,
+  TakerTraits,
 } from "@1inch/cross-chain-sdk";
 import { EVMClient } from "../chains/evm/evm-client";
 import { SuiClient } from "../chains/sui/sui-client";
@@ -513,7 +513,7 @@ export class OrderManager {
           crossChainOrder.escrowExtension.hashLockInfo.toBuffer();
 
         // Extract addresses
-        const makerAddress = originalParams.order.maker;
+        const makerAddress = originalParams.order.receiver;
         const takerAddress = this.suiClient.getAddress();
 
         // Extract amounts from cross-chain order
@@ -522,9 +522,9 @@ export class OrderManager {
           crossChainOrder.escrowExtension.dstSafetyDeposit;
 
         // Get destination token type (for Sui, this would be the coin type)
-        const dstToken = crossChainOrder.takerAsset;
+        const dstToken = originalParams.order.takerAsset;
         // TODO: Convert EVM address to Sui coin type properly
-        const coinType = "0x2::sui::SUI"; // Default to SUI for now, should be mapped from dstToken
+        // const coinType = "0x2::sui::SUI"; // Default to SUI for now, should be mapped from dstToken
 
         console.log(
           `[${dstChainId}] Depositing ${depositAmount} for order ${orderHash}`
@@ -538,7 +538,7 @@ export class OrderManager {
           takerAddress,
           depositAmount,
           safetyDepositAmount,
-          coinType
+          dstToken
         );
 
         console.log(

@@ -54,6 +54,7 @@ export class Resolver {
         "0x0000000000000000000000000000000000000000000000000000000000000000",
       gasBudget: 10000000,
     });
+    this.suiClient.setResolverCapId();
 
     // Initialize OrderManager with chain clients
     this.orderManager = new OrderManager(this.evmClient, this.suiClient);

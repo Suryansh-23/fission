@@ -1,7 +1,7 @@
 {
     "quoteId": "c696fe51-8844-43a4-9421-94ba4b77f5ba",
-    "srcTokenAmount": "10000000",
-    "dstTokenAmount": "9974762",
+    "srcTokenAmount": "10000",
+    "dstTokenAmount": "9974",
     "presets": {
         "fast": {
             "auctionDuration": 180,

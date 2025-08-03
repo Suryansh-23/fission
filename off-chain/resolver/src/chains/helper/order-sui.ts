@@ -184,230 +184,238 @@ public fun get_auction_details<T: store>(order: &Order<T>): AuctionDetails {
 
 */
 
-import { SuiClient } from '@mysten/sui/client';
-import { Transaction } from '@mysten/sui/transactions';
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { SuiTransactionBlockResponse } from '@mysten/sui/client';
-import { SuiCoinHelper } from './coin-sui';
+import { SuiClient } from "@mysten/sui/client";
+import { Transaction } from "@mysten/sui/transactions";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { SuiTransactionBlockResponse } from "@mysten/sui/client";
+import { SuiCoinHelper } from "./coin-sui";
 
 export interface CoinInfo {
-    coinObjectId: string;
-    balance: bigint;
-    coinType: string;
+  coinObjectId: string;
+  balance: bigint;
+  coinType: string;
 }
 
 export interface CreateOrderParams {
-    receiver: string;
-    makingAmount: bigint;
-    takingAmount: bigint;
-    makerAsset: Uint8Array;
-    takerAsset: Uint8Array;
-    salt: Uint8Array;
-    isPartialFillAllowed: boolean;
-    isMultipleFillsAllowed: boolean;
-    depositAmount: bigint;
-    coinType: string;
-    startTime: bigint;
-    duration: bigint;
-    initialRateBump: bigint;
-    pointsAndTimeDeltas: Uint8Array;
+  receiver: string;
+  makingAmount: bigint;
+  takingAmount: bigint;
+  makerAsset: Uint8Array;
+  takerAsset: Uint8Array;
+  salt: Uint8Array;
+  isPartialFillAllowed: boolean;
+  isMultipleFillsAllowed: boolean;
+  depositAmount: bigint;
+  coinType: string;
+  startTime: bigint;
+  duration: bigint;
+  initialRateBump: bigint;
+  pointsAndTimeDeltas: Uint8Array;
 }
 
 export interface OrderInfo {
-    orderId: string;
-    maker: string;
-    receiver: string;
-    orderHash: Uint8Array;
-    makingAmount: bigint;
-    takingAmount: bigint;
-    remainingAmount: bigint;
-    filledAmount: bigint;
-    isPartialFillAllowed: boolean;
-    isMultipleFillsAllowed: boolean;
-    isActive: boolean;
+  orderId: string;
+  maker: string;
+  receiver: string;
+  orderHash: Uint8Array;
+  makingAmount: bigint;
+  takingAmount: bigint;
+  remainingAmount: bigint;
+  filledAmount: bigint;
+  isPartialFillAllowed: boolean;
+  isMultipleFillsAllowed: boolean;
+  isActive: boolean;
 }
 
 export class SuiOrderHelper {
-    private client: SuiClient;
-    private keypair: Ed25519Keypair;
-    private packageId: string;
-    private coinHelper: SuiCoinHelper;
+  private client: SuiClient;
+  private keypair: Ed25519Keypair;
+  private packageId: string;
+  private coinHelper: SuiCoinHelper;
 
-    constructor(
-        client: SuiClient,
-        keypair: Ed25519Keypair,
-        packageId: string
-    ) {
-        this.client = client;
-        this.keypair = keypair;
-        this.packageId = packageId;
-        this.coinHelper = new SuiCoinHelper(client, keypair);
-    }
+  constructor(client: SuiClient, keypair: Ed25519Keypair, packageId: string) {
+    this.client = client;
+    this.keypair = keypair;
+    this.packageId = packageId;
+    this.coinHelper = new SuiCoinHelper(client, keypair);
+  }
 
-    /**
-     * Create a new order on Sui blockchain
-     */
-    async createOrder(params: CreateOrderParams): Promise<SuiTransactionBlockResponse> {
-        const tx = new Transaction();
+  /**
+   * Create a new order on Sui blockchain
+   */
+  async createOrder(
+    params: CreateOrderParams
+  ): Promise<SuiTransactionBlockResponse> {
+    const tx = new Transaction();
 
-        // Prepare deposit coin
-        let depositCoin;
-        if (params.coinType === SuiCoinHelper.SUI_TYPE) {
-            // For SUI, split from gas
-            [depositCoin] = tx.splitCoins(tx.gas, [params.depositAmount]);
-        } else {
-            // For other tokens, select appropriate coins
-            const selectedCoins = await this.coinHelper.selectCoinsForAmount(
-                params.depositAmount,
-                params.coinType
-            );
-            
-            if (selectedCoins.length === 1 && selectedCoins[0].balance === params.depositAmount) {
-                depositCoin = tx.object(selectedCoins[0].coinObjectId);
-            } else {
-                // Merge and split as needed
-                const primaryCoin = selectedCoins[0];
-                const coinsToMerge = selectedCoins.slice(1);
-                
-                if (coinsToMerge.length > 0) {
-                    tx.mergeCoins(
-                        tx.object(primaryCoin.coinObjectId),
-                        coinsToMerge.map((coin: CoinInfo) => tx.object(coin.coinObjectId))
-                    );
-                }
-                
-                [depositCoin] = tx.splitCoins(
-                    tx.object(primaryCoin.coinObjectId),
-                    [params.depositAmount]
-                );
-            }
+    // Prepare deposit coin
+    let depositCoin;
+    if (params.coinType === SuiCoinHelper.SUI_PACKAGE_ID) {
+      // For SUI, split from gas
+      [depositCoin] = tx.splitCoins(tx.gas, [params.depositAmount]);
+    } else {
+      // For other tokens, select appropriate coins
+      const selectedCoins = await this.coinHelper.selectCoinsForAmount(
+        params.depositAmount,
+        params.coinType
+      );
+
+      if (
+        selectedCoins.length === 1 &&
+        selectedCoins[0].balance === params.depositAmount
+      ) {
+        depositCoin = tx.object(selectedCoins[0].coinObjectId);
+      } else {
+        // Merge and split as needed
+        const primaryCoin = selectedCoins[0];
+        const coinsToMerge = selectedCoins.slice(1);
+
+        if (coinsToMerge.length > 0) {
+          tx.mergeCoins(
+            tx.object(primaryCoin.coinObjectId),
+            coinsToMerge.map((coin: CoinInfo) => tx.object(coin.coinObjectId))
+          );
         }
 
-        // Call the create_order function
-        tx.moveCall({
-            target: `${this.packageId}::order::create_order`,
-            typeArguments: [params.coinType],
-            arguments: [
-                tx.pure.address(params.receiver),
-                tx.pure.u64(params.makingAmount.toString()),
-                tx.pure.u64(params.takingAmount.toString()),
-                tx.pure.vector('u8', Array.from(params.makerAsset)),
-                tx.pure.vector('u8', Array.from(params.takerAsset)),
-                tx.pure.vector('u8', Array.from(params.salt)),
-                tx.pure.bool(params.isPartialFillAllowed),
-                tx.pure.bool(params.isMultipleFillsAllowed),
-                depositCoin,
-                tx.pure.u64(params.startTime.toString()),
-                tx.pure.u64(params.duration.toString()),
-                tx.pure.u64(params.initialRateBump.toString()),
-                tx.pure.vector('u8', Array.from(params.pointsAndTimeDeltas)),
-            ],
-        });
-
-        // Execute transaction
-        const result = await this.client.signAndExecuteTransaction({
-            transaction: tx,
-            signer: this.keypair,
-            options: {
-                showEvents: true,
-                showEffects: true,
-                showObjectChanges: true,
-            },
-        });
-
-        return result;
+        [depositCoin] = tx.splitCoins(tx.object(primaryCoin.coinObjectId), [
+          params.depositAmount,
+        ]);
+      }
     }
 
-    /**
-     * Get order information by object ID
-     */
-    async getOrderInfo(orderId: string, coinType: string): Promise<OrderInfo | null> {
-        try {
-            const response = await this.client.getObject({
-                id: orderId,
-                options: {
-                    showContent: true,
-                    showType: true,
-                },
-            });
+    // Call the create_order function
+    tx.moveCall({
+      target: `${this.packageId}::order::create_order`,
+      typeArguments: [params.coinType],
+      arguments: [
+        tx.pure.address(params.receiver),
+        tx.pure.u64(params.makingAmount.toString()),
+        tx.pure.u64(params.takingAmount.toString()),
+        tx.pure.vector("u8", Array.from(params.makerAsset)),
+        tx.pure.vector("u8", Array.from(params.takerAsset)),
+        tx.pure.vector("u8", Array.from(params.salt)),
+        tx.pure.bool(params.isPartialFillAllowed),
+        tx.pure.bool(params.isMultipleFillsAllowed),
+        depositCoin,
+        tx.pure.u64(params.startTime.toString()),
+        tx.pure.u64(params.duration.toString()),
+        tx.pure.u64(params.initialRateBump.toString()),
+        tx.pure.vector("u8", Array.from(params.pointsAndTimeDeltas)),
+      ],
+    });
 
-            if (!response.data || !response.data.content || response.data.content.dataType !== 'moveObject') {
-                return null;
-            }
+    // Execute transaction
+    const result = await this.client.signAndExecuteTransaction({
+      transaction: tx,
+      signer: this.keypair,
+      options: {
+        showEvents: true,
+        showEffects: true,
+        showObjectChanges: true,
+      },
+    });
 
-            const fields = response.data.content.fields as any;
+    return result;
+  }
 
-            return {
-                orderId,
-                maker: fields.maker,
-                receiver: fields.receiver,
-                orderHash: new Uint8Array(fields.order_hash),
-                makingAmount: BigInt(fields.making_amount),
-                takingAmount: BigInt(fields.taking_amount),
-                remainingAmount: BigInt(fields.remaining_coins?.fields?.balance || 0),
-                filledAmount: BigInt(fields.filled_amount),
-                isPartialFillAllowed: fields.is_partial_fill_allowed,
-                isMultipleFillsAllowed: fields.is_multiple_fills_allowed,
-                isActive: BigInt(fields.remaining_coins?.fields?.balance || 0) > 0n,
-            };
-        } catch (error) {
-            console.error('Error fetching order info:', error);
-            return null;
-        }
-    }
+  /**
+   * Get order information by object ID
+   */
+  async getOrderInfo(
+    orderId: string,
+    coinType: string
+  ): Promise<OrderInfo | null> {
+    try {
+      const response = await this.client.getObject({
+        id: orderId,
+        options: {
+          showContent: true,
+          showType: true,
+        },
+      });
 
-    /**
-     * Withdraw remaining tokens from order (only for maker)
-     */
-    async withdrawFromOrder(orderId: string, coinType: string): Promise<SuiTransactionBlockResponse> {
-        const tx = new Transaction();
-
-        tx.moveCall({
-            target: `${this.packageId}::order::withdraw`,
-            typeArguments: [coinType],
-            arguments: [
-                tx.object(orderId),
-            ],
-        });
-
-        const result = await this.client.signAndExecuteTransaction({
-            transaction: tx,
-            signer: this.keypair,
-            options: {
-                showEvents: true,
-                showEffects: true,
-                showObjectChanges: true,
-            },
-        });
-
-        return result;
-    }
-
-    /**
-     * Parse OrderCreated event from transaction result
-     */
-    parseOrderCreatedEvent(result: SuiTransactionBlockResponse): {
-        orderId: string;
-        maker: string;
-        orderHash: Uint8Array;
-        makingAmount: bigint;
-        takingAmount: bigint;
-    } | null {
-        if (!result.events) return null;
-
-        for (const event of result.events) {
-            if (event.type.includes('::order::OrderCreated')) {
-                const parsedJson = event.parsedJson as any;
-                return {
-                    orderId: parsedJson.id,
-                    maker: parsedJson.maker,
-                    orderHash: new Uint8Array(parsedJson.order_hash),
-                    makingAmount: BigInt(parsedJson.making_amount),
-                    takingAmount: BigInt(parsedJson.taking_amount),
-                };
-            }
-        }
-
+      if (
+        !response.data ||
+        !response.data.content ||
+        response.data.content.dataType !== "moveObject"
+      ) {
         return null;
+      }
+
+      const fields = response.data.content.fields as any;
+
+      return {
+        orderId,
+        maker: fields.maker,
+        receiver: fields.receiver,
+        orderHash: new Uint8Array(fields.order_hash),
+        makingAmount: BigInt(fields.making_amount),
+        takingAmount: BigInt(fields.taking_amount),
+        remainingAmount: BigInt(fields.remaining_coins?.fields?.balance || 0),
+        filledAmount: BigInt(fields.filled_amount),
+        isPartialFillAllowed: fields.is_partial_fill_allowed,
+        isMultipleFillsAllowed: fields.is_multiple_fills_allowed,
+        isActive: BigInt(fields.remaining_coins?.fields?.balance || 0) > 0n,
+      };
+    } catch (error) {
+      console.error("Error fetching order info:", error);
+      return null;
     }
+  }
+
+  /**
+   * Withdraw remaining tokens from order (only for maker)
+   */
+  async withdrawFromOrder(
+    orderId: string,
+    coinType: string
+  ): Promise<SuiTransactionBlockResponse> {
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${this.packageId}::order::withdraw`,
+      typeArguments: [coinType],
+      arguments: [tx.object(orderId)],
+    });
+
+    const result = await this.client.signAndExecuteTransaction({
+      transaction: tx,
+      signer: this.keypair,
+      options: {
+        showEvents: true,
+        showEffects: true,
+        showObjectChanges: true,
+      },
+    });
+
+    return result;
+  }
+
+  /**
+   * Parse OrderCreated event from transaction result
+   */
+  parseOrderCreatedEvent(result: SuiTransactionBlockResponse): {
+    orderId: string;
+    maker: string;
+    orderHash: Uint8Array;
+    makingAmount: bigint;
+    takingAmount: bigint;
+  } | null {
+    if (!result.events) return null;
+
+    for (const event of result.events) {
+      if (event.type.includes("::order::OrderCreated")) {
+        const parsedJson = event.parsedJson as any;
+        return {
+          orderId: parsedJson.id,
+          maker: parsedJson.maker,
+          orderHash: new Uint8Array(parsedJson.order_hash),
+          makingAmount: BigInt(parsedJson.making_amount),
+          takingAmount: BigInt(parsedJson.taking_amount),
+        };
+      }
+    }
+
+    return null;
+  }
 }

@@ -255,7 +255,12 @@ func (s *APIServer) GetReadyToAcceptSecretFills(c *gin.Context) {
 	}
 
 	// lock and borrow ref
-	orderEntry.OrderMutMutex.Lock()
+	if !orderEntry.OrderMutMutex.TryLock() {
+		c.JSON(http.StatusOK, common.ReadyToAcceptSecretFills{
+			Fills: []common.ReadyToAcceptSecretFill{},
+		})
+		return
+	}
 	fills := orderEntry.OrderFills.Fills
 
 	// replace old ref with new

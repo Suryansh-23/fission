@@ -22,7 +22,7 @@ export class EVMClient {
   private escrowFactory: EscrowFactory;
 
   // Finality lock timeout for EVM chains (in milliseconds)
-  private static readonly FINALITY_LOCK_TIMEOUT = 10000;
+  private static readonly FINALITY_LOCK_TIMEOUT = 2000;
 
   constructor(config: EVMConfig) {
     this.config = config;

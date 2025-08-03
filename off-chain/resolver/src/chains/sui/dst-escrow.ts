@@ -188,411 +188,422 @@ public fun cancel<T: store>(
 
 **/
 
-import { SuiClient, SuiTransactionBlockResponse } from '@mysten/sui/client';
-import { Transaction } from '@mysten/sui/transactions';
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { SuiCoinHelper } from '../helper/coin-sui';
-import { SuiImmutablesHelper, DstTimelocks } from '../helper/immutables-sui';
+import { SuiClient, SuiTransactionBlockResponse } from "@mysten/sui/client";
+import { Transaction } from "@mysten/sui/transactions";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { SuiCoinHelper } from "../helper/coin-sui";
+import { SuiImmutablesHelper, DstTimelocks } from "../helper/immutables-sui";
 
 // Event interfaces
 export interface DstEscrowCreatedEvent {
-    id: string;
-    hashlock: Uint8Array;
-    taker: string;
-    token_package_id: string;
-    amount: bigint;
+  id: string;
+  hashlock: Uint8Array;
+  taker: string;
+  token_package_id: string;
+  amount: bigint;
 }
 
 export interface DstEscrowWithdrawnEvent {
-    id: string;
-    secret: Uint8Array;
+  id: string;
+  secret: Uint8Array;
 }
 
 export interface DstEscrowCancelledEvent {
-    id: string;
+  id: string;
 }
 
 export interface CreateDstEscrowParams {
-    orderHash: Uint8Array;
-    hashlock: Uint8Array;
-    maker: string;
-    taker: string;
-    depositAmount: bigint;
-    safetyDepositAmount: bigint;
-    coinType: string;
-    dstWithdrawalTimestamp: bigint;
-    dstPublicWithdrawalTimestamp: bigint;
-    dstCancellationTimestamp: bigint;
-    srcCancellationTimestamp: bigint;
+  orderHash: Uint8Array;
+  hashlock: Uint8Array;
+  maker: string;
+  taker: string;
+  depositAmount: bigint;
+  safetyDepositAmount: bigint;
+  coinType: string;
+  dstWithdrawalTimestamp: bigint;
+  dstPublicWithdrawalTimestamp: bigint;
+  dstCancellationTimestamp: bigint;
+  srcCancellationTimestamp: bigint;
 }
 
 export interface WithdrawParams {
-    escrowId: string;
-    secret: Uint8Array;
-    coinType: string;
+  escrowId: string;
+  secret: Uint8Array;
+  coinType: string;
 }
 
 export interface PublicWithdrawParams extends WithdrawParams {
-    registryId: string;
+  registryId: string;
 }
 
 export interface CancelParams {
-    escrowId: string;
-    coinType: string;
+  escrowId: string;
+  coinType: string;
 }
 
 export class SuiDstEscrowHelper {
-    private client: SuiClient;
-    private keypair: Ed25519Keypair;
-    private packageId: string;
-    private coinHelper: SuiCoinHelper;
-    private immutablesHelper: SuiImmutablesHelper;
+  private client: SuiClient;
+  private keypair: Ed25519Keypair;
+  private packageId: string;
+  private coinHelper: SuiCoinHelper;
+  private immutablesHelper: SuiImmutablesHelper;
 
-    constructor(
-        client: SuiClient,
-        keypair: Ed25519Keypair,
-        packageId: string
+  constructor(client: SuiClient, keypair: Ed25519Keypair, packageId: string) {
+    this.client = client;
+    this.keypair = keypair;
+    this.packageId = packageId;
+    this.coinHelper = new SuiCoinHelper(client, keypair);
+    this.immutablesHelper = new SuiImmutablesHelper(client, keypair, packageId);
+  }
+
+  /**
+   * Create a new destination escrow
+   */
+  async createDstEscrow(
+    params: CreateDstEscrowParams
+  ): Promise<SuiTransactionBlockResponse> {
+    // Validate creation time constraint
+    if (params.dstCancellationTimestamp > params.srcCancellationTimestamp) {
+      throw new Error(
+        "Destination cancellation time must be before or equal to source cancellation time"
+      );
+    }
+
+    // Validate timelock ordering
+    const timelocks = this.immutablesHelper.createDstTimelocks(
+      this.immutablesHelper.getCurrentTimestamp(),
+      params.dstWithdrawalTimestamp,
+      params.dstPublicWithdrawalTimestamp,
+      params.dstCancellationTimestamp
+    );
+
+    const tx = new Transaction();
+
+    // Prepare deposit coin
+    let depositCoin;
+    if (params.coinType === SuiCoinHelper.SUI_PACKAGE_ID) {
+      // For SUI, split from gas
+      [depositCoin] = tx.splitCoins(tx.gas, [params.depositAmount]);
+    } else {
+      // For other tokens, select appropriate coins
+      const selectedCoins = await this.coinHelper.selectCoinsForAmount(
+        params.depositAmount,
+        params.coinType
+      );
+
+      if (
+        selectedCoins.length === 1 &&
+        selectedCoins[0].balance === params.depositAmount
+      ) {
+        depositCoin = tx.object(selectedCoins[0].coinObjectId);
+      } else {
+        // Merge and split as needed
+        const primaryCoin = selectedCoins[0];
+        const coinsToMerge = selectedCoins.slice(1);
+
+        if (coinsToMerge.length > 0) {
+          tx.mergeCoins(
+            tx.object(primaryCoin.coinObjectId),
+            coinsToMerge.map((coin) => tx.object(coin.coinObjectId))
+          );
+        }
+
+        [depositCoin] = tx.splitCoins(tx.object(primaryCoin.coinObjectId), [
+          params.depositAmount,
+        ]);
+      }
+    }
+
+    // Prepare safety deposit (always SUI)
+    const [safetyDepositCoin] = tx.splitCoins(tx.gas, [
+      params.safetyDepositAmount,
+    ]);
+
+    // Create the escrow
+    tx.moveCall({
+      target: `${this.packageId}::dst_escrow::create_new`,
+      typeArguments: [params.coinType],
+      arguments: [
+        tx.pure.vector("u8", Array.from(params.orderHash)),
+        tx.pure.vector("u8", Array.from(params.hashlock)),
+        tx.pure.address(params.maker),
+        tx.pure.address(params.taker),
+        depositCoin,
+        safetyDepositCoin,
+        tx.pure.u64(params.dstWithdrawalTimestamp),
+        tx.pure.u64(params.dstPublicWithdrawalTimestamp),
+        tx.pure.u64(params.dstCancellationTimestamp),
+        tx.pure.u64(params.srcCancellationTimestamp),
+      ],
+    });
+
+    return await this.client.signAndExecuteTransaction({
+      transaction: tx,
+      signer: this.keypair,
+      options: {
+        showEffects: true,
+        showEvents: true,
+        showObjectChanges: true,
+      },
+    });
+  }
+
+  /**
+   * Withdraw from escrow (taker only, during withdrawal period)
+   */
+  async withdraw(params: WithdrawParams): Promise<SuiTransactionBlockResponse> {
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${this.packageId}::dst_escrow::withdraw`,
+      typeArguments: [params.coinType],
+      arguments: [
+        tx.object(params.escrowId),
+        tx.pure.vector("u8", Array.from(params.secret)),
+      ],
+    });
+
+    return await this.client.signAndExecuteTransaction({
+      transaction: tx,
+      signer: this.keypair,
+      options: {
+        showEffects: true,
+        showEvents: true,
+        showObjectChanges: true,
+      },
+    });
+  }
+
+  /**
+   * Public withdrawal (any registered resolver, during public withdrawal period)
+   */
+  async publicWithdraw(
+    params: PublicWithdrawParams
+  ): Promise<SuiTransactionBlockResponse> {
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${this.packageId}::dst_escrow::public_withdraw`,
+      typeArguments: [params.coinType],
+      arguments: [
+        tx.object(params.escrowId),
+        tx.object(params.registryId),
+        tx.pure.vector("u8", Array.from(params.secret)),
+      ],
+    });
+
+    return await this.client.signAndExecuteTransaction({
+      transaction: tx,
+      signer: this.keypair,
+      options: {
+        showEffects: true,
+        showEvents: true,
+        showObjectChanges: true,
+      },
+    });
+  }
+
+  /**
+   * Cancel escrow (taker only, after cancellation time)
+   */
+  async cancel(params: CancelParams): Promise<SuiTransactionBlockResponse> {
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${this.packageId}::dst_escrow::cancel`,
+      typeArguments: [params.coinType],
+      arguments: [tx.object(params.escrowId)],
+    });
+
+    return await this.client.signAndExecuteTransaction({
+      transaction: tx,
+      signer: this.keypair,
+      options: {
+        showEffects: true,
+        showEvents: true,
+        showObjectChanges: true,
+      },
+    });
+  }
+
+  /**
+   * Parse dst escrow events from transaction response
+   */
+  parseDstEscrowEvents(response: SuiTransactionBlockResponse): {
+    created: DstEscrowCreatedEvent[];
+    withdrawn: DstEscrowWithdrawnEvent[];
+    cancelled: DstEscrowCancelledEvent[];
+  } {
+    const created: DstEscrowCreatedEvent[] = [];
+    const withdrawn: DstEscrowWithdrawnEvent[] = [];
+    const cancelled: DstEscrowCancelledEvent[] = [];
+
+    if (response.events) {
+      for (const event of response.events) {
+        try {
+          const parsedFields = event.parsedJson as any;
+
+          if (event.type.includes("DstEscrowCreatedEvent")) {
+            created.push({
+              id: parsedFields.id,
+              hashlock: new Uint8Array(parsedFields.hashlock),
+              taker: parsedFields.taker,
+              token_package_id: parsedFields.token_package_id,
+              amount: BigInt(parsedFields.amount),
+            });
+          } else if (event.type.includes("DstEscrowWithdrawnEvent")) {
+            withdrawn.push({
+              id: parsedFields.id,
+              secret: new Uint8Array(parsedFields.secret),
+            });
+          } else if (event.type.includes("DstEscrowCancelledEvent")) {
+            cancelled.push({
+              id: parsedFields.id,
+            });
+          }
+        } catch (error) {
+          console.error("Error parsing dst escrow event:", error);
+        }
+      }
+    }
+
+    return { created, withdrawn, cancelled };
+  }
+
+  /**
+   * Get escrow details by ID
+   */
+  async getEscrowDetails(escrowId: string): Promise<any> {
+    const escrowObject = await this.client.getObject({
+      id: escrowId,
+      options: {
+        showContent: true,
+        showType: true,
+      },
+    });
+
+    if (
+      !escrowObject.data?.content ||
+      escrowObject.data.content.dataType !== "moveObject"
     ) {
-        this.client = client;
-        this.keypair = keypair;
-        this.packageId = packageId;
-        this.coinHelper = new SuiCoinHelper(client, keypair);
-        this.immutablesHelper = new SuiImmutablesHelper(client, keypair, packageId);
+      throw new Error("Failed to fetch escrow object or invalid object type");
     }
 
-    /**
-     * Create a new destination escrow
-     */
-    async createDstEscrow(params: CreateDstEscrowParams): Promise<SuiTransactionBlockResponse> {
-        // Validate creation time constraint
-        if (params.dstCancellationTimestamp > params.srcCancellationTimestamp) {
-            throw new Error('Destination cancellation time must be before or equal to source cancellation time');
-        }
+    return escrowObject.data.content.fields;
+  }
 
-        // Validate timelock ordering
-        const timelocks = this.immutablesHelper.createDstTimelocks(
-            this.immutablesHelper.getCurrentTimestamp(),
-            params.dstWithdrawalTimestamp,
-            params.dstPublicWithdrawalTimestamp,
-            params.dstCancellationTimestamp
+  /**
+   * Check if the current time is within withdrawal period
+   */
+  async isWithdrawalPeriodActive(escrowId: string): Promise<boolean> {
+    try {
+      const escrowDetails = await this.getEscrowDetails(escrowId);
+      const currentTime = this.immutablesHelper.getCurrentTimestamp();
+
+      // Extract timelock information from immutables
+      const immutables = escrowDetails.immutables;
+      const timelocks = immutables.timelocks;
+
+      if (timelocks.DstTimelocks) {
+        const withdrawalTime = BigInt(timelocks.DstTimelocks.withdrawal);
+        const cancellationTime = BigInt(timelocks.DstTimelocks.cancellation);
+
+        return currentTime >= withdrawalTime && currentTime < cancellationTime;
+      }
+
+      return false;
+    } catch (error) {
+      console.error("Error checking withdrawal period:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if the current time is within public withdrawal period
+   */
+  async isPublicWithdrawalPeriodActive(escrowId: string): Promise<boolean> {
+    try {
+      const escrowDetails = await this.getEscrowDetails(escrowId);
+      const currentTime = this.immutablesHelper.getCurrentTimestamp();
+
+      const immutables = escrowDetails.immutables;
+      const timelocks = immutables.timelocks;
+
+      if (timelocks.DstTimelocks) {
+        const publicWithdrawalTime = BigInt(
+          timelocks.DstTimelocks.public_withdrawal
         );
+        const cancellationTime = BigInt(timelocks.DstTimelocks.cancellation);
 
-        const tx = new Transaction();
+        return (
+          currentTime >= publicWithdrawalTime && currentTime < cancellationTime
+        );
+      }
 
-        // Prepare deposit coin
-        let depositCoin;
-        if (params.coinType === SuiCoinHelper.SUI_TYPE) {
-            // For SUI, split from gas
-            [depositCoin] = tx.splitCoins(tx.gas, [params.depositAmount]);
-        } else {
-            // For other tokens, select appropriate coins
-            const selectedCoins = await this.coinHelper.selectCoinsForAmount(
-                params.depositAmount,
-                params.coinType
-            );
-            
-            if (selectedCoins.length === 1 && selectedCoins[0].balance === params.depositAmount) {
-                depositCoin = tx.object(selectedCoins[0].coinObjectId);
-            } else {
-                // Merge and split as needed
-                const primaryCoin = selectedCoins[0];
-                const coinsToMerge = selectedCoins.slice(1);
-                
-                if (coinsToMerge.length > 0) {
-                    tx.mergeCoins(
-                        tx.object(primaryCoin.coinObjectId),
-                        coinsToMerge.map(coin => tx.object(coin.coinObjectId))
-                    );
-                }
-                
-                [depositCoin] = tx.splitCoins(
-                    tx.object(primaryCoin.coinObjectId),
-                    [params.depositAmount]
-                );
-            }
-        }
-
-        // Prepare safety deposit (always SUI)
-        const [safetyDepositCoin] = tx.splitCoins(tx.gas, [params.safetyDepositAmount]);
-
-        // Create the escrow
-        tx.moveCall({
-            target: `${this.packageId}::dst_escrow::create_new`,
-            typeArguments: [params.coinType],
-            arguments: [
-                tx.pure.vector('u8', Array.from(params.orderHash)),
-                tx.pure.vector('u8', Array.from(params.hashlock)),
-                tx.pure.address(params.maker),
-                tx.pure.address(params.taker),
-                depositCoin,
-                safetyDepositCoin,
-                tx.pure.u64(params.dstWithdrawalTimestamp),
-                tx.pure.u64(params.dstPublicWithdrawalTimestamp),
-                tx.pure.u64(params.dstCancellationTimestamp),
-                tx.pure.u64(params.srcCancellationTimestamp),
-            ],
-        });
-
-        return await this.client.signAndExecuteTransaction({
-            transaction: tx,
-            signer: this.keypair,
-            options: {
-                showEffects: true,
-                showEvents: true,
-                showObjectChanges: true,
-            },
-        });
+      return false;
+    } catch (error) {
+      console.error("Error checking public withdrawal period:", error);
+      return false;
     }
+  }
 
-    /**
-     * Withdraw from escrow (taker only, during withdrawal period)
-     */
-    async withdraw(params: WithdrawParams): Promise<SuiTransactionBlockResponse> {
-        const tx = new Transaction();
+  /**
+   * Check if the current time is within cancellation period
+   */
+  async isCancellationPeriodActive(escrowId: string): Promise<boolean> {
+    try {
+      const escrowDetails = await this.getEscrowDetails(escrowId);
+      const currentTime = this.immutablesHelper.getCurrentTimestamp();
 
-        tx.moveCall({
-            target: `${this.packageId}::dst_escrow::withdraw`,
-            typeArguments: [params.coinType],
-            arguments: [
-                tx.object(params.escrowId),
-                tx.pure.vector('u8', Array.from(params.secret)),
-            ],
-        });
+      const immutables = escrowDetails.immutables;
+      const timelocks = immutables.timelocks;
 
-        return await this.client.signAndExecuteTransaction({
-            transaction: tx,
-            signer: this.keypair,
-            options: {
-                showEffects: true,
-                showEvents: true,
-                showObjectChanges: true,
-            },
-        });
+      if (timelocks.DstTimelocks) {
+        const cancellationTime = BigInt(timelocks.DstTimelocks.cancellation);
+        return currentTime >= cancellationTime;
+      }
+
+      return false;
+    } catch (error) {
+      console.error("Error checking cancellation period:", error);
+      return false;
     }
+  }
 
-    /**
-     * Public withdrawal (any registered resolver, during public withdrawal period)
-     */
-    async publicWithdraw(params: PublicWithdrawParams): Promise<SuiTransactionBlockResponse> {
-        const tx = new Transaction();
+  /**
+   * Validate secret against hashlock
+   */
+  static validateSecret(secret: Uint8Array, hashlock: Uint8Array): boolean {
+    return true; // TODO: Implement actual validation
+  }
 
-        tx.moveCall({
-            target: `${this.packageId}::dst_escrow::public_withdraw`,
-            typeArguments: [params.coinType],
-            arguments: [
-                tx.object(params.escrowId),
-                tx.object(params.registryId),
-                tx.pure.vector('u8', Array.from(params.secret)),
-            ],
-        });
+  /**
+   * Create standard dst escrow parameters for testing
+   */
+  createStandardDstEscrowParams(
+    orderHash: Uint8Array,
+    hashlock: Uint8Array,
+    maker: string,
+    taker: string,
+    depositAmount: bigint,
+    safetyDepositAmount: bigint,
+    coinType: string = SuiCoinHelper.SUI_PACKAGE_ID
+  ): CreateDstEscrowParams {
+    const now = this.immutablesHelper.getCurrentTimestamp();
+    const hour = BigInt(60 * 60 * 1000);
 
-        return await this.client.signAndExecuteTransaction({
-            transaction: tx,
-            signer: this.keypair,
-            options: {
-                showEffects: true,
-                showEvents: true,
-                showObjectChanges: true,
-            },
-        });
-    }
-
-    /**
-     * Cancel escrow (taker only, after cancellation time)
-     */
-    async cancel(params: CancelParams): Promise<SuiTransactionBlockResponse> {
-        const tx = new Transaction();
-
-        tx.moveCall({
-            target: `${this.packageId}::dst_escrow::cancel`,
-            typeArguments: [params.coinType],
-            arguments: [
-                tx.object(params.escrowId),
-            ],
-        });
-
-        return await this.client.signAndExecuteTransaction({
-            transaction: tx,
-            signer: this.keypair,
-            options: {
-                showEffects: true,
-                showEvents: true,
-                showObjectChanges: true,
-            },
-        });
-    }
-
-    /**
-     * Parse dst escrow events from transaction response
-     */
-    parseDstEscrowEvents(response: SuiTransactionBlockResponse): {
-        created: DstEscrowCreatedEvent[];
-        withdrawn: DstEscrowWithdrawnEvent[];
-        cancelled: DstEscrowCancelledEvent[];
-    } {
-        const created: DstEscrowCreatedEvent[] = [];
-        const withdrawn: DstEscrowWithdrawnEvent[] = [];
-        const cancelled: DstEscrowCancelledEvent[] = [];
-
-        if (response.events) {
-            for (const event of response.events) {
-                try {
-                    const parsedFields = event.parsedJson as any;
-
-                    if (event.type.includes('DstEscrowCreatedEvent')) {
-                        created.push({
-                            id: parsedFields.id,
-                            hashlock: new Uint8Array(parsedFields.hashlock),
-                            taker: parsedFields.taker,
-                            token_package_id: parsedFields.token_package_id,
-                            amount: BigInt(parsedFields.amount),
-                        });
-                    } else if (event.type.includes('DstEscrowWithdrawnEvent')) {
-                        withdrawn.push({
-                            id: parsedFields.id,
-                            secret: new Uint8Array(parsedFields.secret),
-                        });
-                    } else if (event.type.includes('DstEscrowCancelledEvent')) {
-                        cancelled.push({
-                            id: parsedFields.id,
-                        });
-                    }
-                } catch (error) {
-                    console.error('Error parsing dst escrow event:', error);
-                }
-            }
-        }
-
-        return { created, withdrawn, cancelled };
-    }
-
-    /**
-     * Get escrow details by ID
-     */
-    async getEscrowDetails(escrowId: string): Promise<any> {
-        const escrowObject = await this.client.getObject({
-            id: escrowId,
-            options: {
-                showContent: true,
-                showType: true,
-            },
-        });
-
-        if (!escrowObject.data?.content || escrowObject.data.content.dataType !== 'moveObject') {
-            throw new Error('Failed to fetch escrow object or invalid object type');
-        }
-
-        return escrowObject.data.content.fields;
-    }
-
-    /**
-     * Check if the current time is within withdrawal period
-     */
-    async isWithdrawalPeriodActive(escrowId: string): Promise<boolean> {
-        try {
-            const escrowDetails = await this.getEscrowDetails(escrowId);
-            const currentTime = this.immutablesHelper.getCurrentTimestamp();
-            
-            // Extract timelock information from immutables
-            const immutables = escrowDetails.immutables;
-            const timelocks = immutables.timelocks;
-            
-            if (timelocks.DstTimelocks) {
-                const withdrawalTime = BigInt(timelocks.DstTimelocks.withdrawal);
-                const cancellationTime = BigInt(timelocks.DstTimelocks.cancellation);
-                
-                return currentTime >= withdrawalTime && currentTime < cancellationTime;
-            }
-            
-            return false;
-        } catch (error) {
-            console.error('Error checking withdrawal period:', error);
-            return false;
-        }
-    }
-
-    /**
-     * Check if the current time is within public withdrawal period
-     */
-    async isPublicWithdrawalPeriodActive(escrowId: string): Promise<boolean> {
-        try {
-            const escrowDetails = await this.getEscrowDetails(escrowId);
-            const currentTime = this.immutablesHelper.getCurrentTimestamp();
-            
-            const immutables = escrowDetails.immutables;
-            const timelocks = immutables.timelocks;
-            
-            if (timelocks.DstTimelocks) {
-                const publicWithdrawalTime = BigInt(timelocks.DstTimelocks.public_withdrawal);
-                const cancellationTime = BigInt(timelocks.DstTimelocks.cancellation);
-                
-                return currentTime >= publicWithdrawalTime && currentTime < cancellationTime;
-            }
-            
-            return false;
-        } catch (error) {
-            console.error('Error checking public withdrawal period:', error);
-            return false;
-        }
-    }
-
-    /**
-     * Check if the current time is within cancellation period
-     */
-    async isCancellationPeriodActive(escrowId: string): Promise<boolean> {
-        try {
-            const escrowDetails = await this.getEscrowDetails(escrowId);
-            const currentTime = this.immutablesHelper.getCurrentTimestamp();
-            
-            const immutables = escrowDetails.immutables;
-            const timelocks = immutables.timelocks;
-            
-            if (timelocks.DstTimelocks) {
-                const cancellationTime = BigInt(timelocks.DstTimelocks.cancellation);
-                return currentTime >= cancellationTime;
-            }
-            
-            return false;
-        } catch (error) {
-            console.error('Error checking cancellation period:', error);
-            return false;
-        }
-    }
-
-    /**
-     * Validate secret against hashlock
-     */
-    static validateSecret(secret: Uint8Array, hashlock: Uint8Array): boolean {
-        return true; // TODO: Implement actual validation
-    }
-
-    /**
-     * Create standard dst escrow parameters for testing
-     */
-    createStandardDstEscrowParams(
-        orderHash: Uint8Array,
-        hashlock: Uint8Array,
-        maker: string,
-        taker: string,
-        depositAmount: bigint,
-        safetyDepositAmount: bigint,
-        coinType: string = SuiCoinHelper.SUI_TYPE
-    ): CreateDstEscrowParams {
-        const now = this.immutablesHelper.getCurrentTimestamp();
-        const hour = BigInt(60 * 60 * 1000);
-
-        return {
-            orderHash,
-            hashlock,
-            maker,
-            taker,
-            depositAmount,
-            safetyDepositAmount,
-            coinType,
-            dstWithdrawalTimestamp: now + hour,
-            dstPublicWithdrawalTimestamp: now + (2n * hour),
-            dstCancellationTimestamp: now + (24n * hour),
-            srcCancellationTimestamp: now + (48n * hour),
-        };
-    }
+    return {
+      orderHash,
+      hashlock,
+      maker,
+      taker,
+      depositAmount,
+      safetyDepositAmount,
+      coinType,
+      dstWithdrawalTimestamp: now + hour,
+      dstPublicWithdrawalTimestamp: now + 2n * hour,
+      dstCancellationTimestamp: now + 24n * hour,
+      srcCancellationTimestamp: now + 48n * hour,
+    };
+  }
 }

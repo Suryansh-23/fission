@@ -66,8 +66,6 @@ func (m *Manager) handleTxHashEvent(parts []string) {
 		return
 	}
 
-	defer orderEntry.OrderMutMutex.Unlock()
-
 	quoteEntry, err := m.GetQuote(orderEntry.Order.QuoteID)
 	if err != nil {
 		m.logger.Printf("Error getting quote for order %s: %v", orderHash, err)
@@ -284,14 +282,10 @@ func (m *Manager) handleTxHashEvent(parts []string) {
 	}
 }
 
-func computeTTL(srcTimestamp time.Time, dstTimestamp time.Time, quote *common.Quote) time.Duration {
-	srcDuration := time.Since(srcTimestamp)
+func computeTTL(_ time.Time, dstTimestamp time.Time, _ *common.Quote) time.Duration {
 	dstDuration := time.Since(dstTimestamp)
 
-	srcTTL := math.Max(float64(quote.TimeLocks.SrcWithdrawal)-srcDuration.Seconds(), 0)
-	dstTTL := math.Max(float64(quote.TimeLocks.DstWithdrawal)-dstDuration.Seconds(), 0)
-
-	return time.Duration(math.Max(srcTTL, dstTTL) * float64(time.Second))
+	return time.Duration(math.Max(2-dstDuration.Seconds(), 0) * float64(time.Second))
 }
 
 func (m *Manager) allowSecretRelease(orderHash string, hashIdx int, srcTxHash string, dstTxHash string) {
