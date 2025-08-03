@@ -2,6 +2,7 @@ import { SuiEscrowExtension } from "@1inch/cross-chain-sdk";
 import { EventId, SuiClient as SuiSdkClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { coinWithBalance, Transaction } from "@mysten/sui/transactions";
+import { fromHex } from "@mysten/sui/utils";
 import { SuiConfig } from "../../config/chain";
 import { SuiCoinHelper } from "../helper/coin-sui";
 import { toHexLower, vecU8ToHex } from "../helper/event-sui";
@@ -148,7 +149,7 @@ export class SuiClient {
     orderId: string,
     depositAmount: bigint,
     safetyDepositAmount: bigint,
-    signature: Uint8Array,
+    signature: string,
     publicKey: Uint8Array,
     scheme: number, // 0=Ed25519, 1=ECDSA-K1, 2=ECDSA-R1
     hashlockInfo: Uint8Array,
@@ -165,8 +166,14 @@ export class SuiClient {
       console.log(
         "[SuiClient] Deploying source escrow using resolver contract"
       );
+      console.log(`[SuiClient]   Signature: ${signature}`);
+
+      const orderObj = await this.client.getObject({
+        id: orderId,
+      });
 
       const tx = new Transaction();
+      tx.setGasBudget(100000000); // Set a reasonable gas budget
 
       // Prepare safety deposit (always SUI)
       const [safetyDepositCoin] = tx.splitCoins(tx.gas, [safetyDepositAmount]);
@@ -176,16 +183,22 @@ export class SuiClient {
         target: `${this.config.packageId}::resolver::create_src_escrow`,
         typeArguments: [coinType],
         arguments: [
+          // clock
+          tx.object("0x6"),
           // _cap: &ResolverCap
           tx.object(this.getResolverCapId()),
           // order: &mut Order<T>
-          tx.object(orderId),
+          tx.sharedObjectRef({
+            objectId: orderId,
+            mutable: true,
+            initialSharedVersion: orderObj.data?.version!,
+          }),
           // deposit_amount: u64
           tx.pure.u64(depositAmount.toString()),
           // safety_deposit: Coin<SUI>
           safetyDepositCoin,
           // signature: vector<u8>
-          tx.pure.vector("u8", Array.from(signature)),
+          tx.pure.vector("u8", fromHex(signature)),
           // pk: vector<u8>
           tx.pure.vector("u8", Array.from(publicKey)),
           // scheme: u8
@@ -194,8 +207,8 @@ export class SuiClient {
           tx.pure.vector("u8", Array.from(hashlockInfo)),
           // secret_hash: vector<u8>
           tx.pure.vector("u8", Array.from(secretHash)),
-          // secret_index: u16
-          tx.pure.u16(secretIndex),
+          // secret_index: u64
+          tx.pure.u64(secretIndex),
           // proof: vector<vector<u8>>
           tx.pure.vector(
             "vector<u8>",
@@ -266,12 +279,6 @@ export class SuiClient {
         throw new Error("Order ID is required for source escrow creation");
       }
 
-      // Parse signature data (assuming Ed25519 for now)
-      const signatureBytes =
-        typeof signature === "string"
-          ? new Uint8Array(Buffer.from(signature.replace("0x", ""), "hex"))
-          : new Uint8Array(signature);
-
       // Extract public key from keypair
       const publicKeyBytes = this.keypair.getPublicKey().toRawBytes();
 
@@ -328,7 +335,7 @@ export class SuiClient {
         orderId,
         fillAmount,
         BigInt(exts.srcSafetyDeposit), // 0.001 SUI safety deposit
-        signatureBytes,
+        signature,
         publicKeyBytes,
         0, // Ed25519 scheme
         hashlockInfo,

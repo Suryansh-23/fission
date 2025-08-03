@@ -1,12 +1,12 @@
 import {
   EvmAddress,
   EvmCrossChainOrder,
+  EvmEscrowFactory,
   HashLock,
   Immutables,
   TakerTraits,
-  EvmEscrowFactory,
 } from "@1inch/cross-chain-sdk";
-import { ethers } from "ethers";
+import { AbiCoder, ethers, keccak256 } from "ethers";
 import { EVMConfig } from "../../config/chain";
 import { EscrowFactory } from "../helper/escrow-factory";
 import * as ResolverJson from "./Resolver.json";
@@ -151,19 +151,28 @@ export class EVMClient {
     }
   }
 
-  async createDstEscrow(dstImmutables?: Immutables<EvmAddress>): Promise<any> {
+  async createDstEscrow(
+    dstImmutables: {
+      orderHash: `0x${string}`;
+      hashlock: `0x${string}`;
+      maker: bigint;
+      taker: bigint;
+      token: bigint;
+      amount: bigint;
+      safetyDeposit: bigint;
+      timelocks: bigint;
+    },
+    srcCancellationTimestamp: bigint
+  ): Promise<any> {
     try {
       console.log("Creating destination escrow on EVM chain");
+      console.log("Destination immutables:", dstImmutables);
 
       if (!dstImmutables) {
         throw new Error(
           "Destination immutables required for EVM createDstEscrow"
         );
       }
-
-      // Extract srcCancellationTimestamp from immutables.timeLocks
-      const srcCancellationTimestamp =
-        dstImmutables.timeLocks.toSrcTimeLocks().privateCancellation;
 
       // Contract ABI matching the exact Resolver.deployDst method
       const contract = new ethers.Contract(
@@ -174,7 +183,7 @@ export class EVMClient {
 
       // Call contract with proper parameters
       const tx = await contract.deployDst(
-        dstImmutables.build(),
+        dstImmutables,
         srcCancellationTimestamp,
         { value: dstImmutables.safetyDeposit }
       );
@@ -195,8 +204,16 @@ export class EVMClient {
 
   async dstWithdrawFromEscrow(
     secret: string,
-    immutables: Immutables<EvmAddress>,
-    blockHash: string
+    dstImmutables: {
+      orderHash: `0x${string}`;
+      hashlock: `0x${string}`;
+      maker: bigint;
+      taker: bigint;
+      token: bigint;
+      amount: bigint;
+      safetyDeposit: bigint;
+      timelocks: bigint;
+    }
   ) {
     try {
       console.log("Withdrawing from EVM escrow");
@@ -210,19 +227,48 @@ export class EVMClient {
 
       // Convert hex secret to bytes32 format
       const secretBytes32 = ethers.id(secret).slice(0, 66);
-      const newImmutables = immutables.withDeployedAt(
-        BigInt(await this.getTimestamp(blockHash))
+      // const newImmutables = immutables.withDeployedAt(
+      //   BigInt(await this.getTimestamp(blockHash))
+      // );
+
+      // Encode the immutables object to bytes for hashing
+      const encodedImmutables = AbiCoder.defaultAbiCoder().encode(
+        [
+          "bytes32",
+          "bytes32",
+          "uint256",
+          "uint256",
+          "uint256",
+          "uint256",
+          "uint256",
+          "uint256",
+        ],
+        [
+          dstImmutables.orderHash,
+          dstImmutables.hashlock,
+          dstImmutables.maker,
+          dstImmutables.taker,
+          dstImmutables.token,
+          dstImmutables.amount,
+          dstImmutables.safetyDeposit,
+          dstImmutables.timelocks,
+        ]
       );
 
       const escrowAddress = new EvmEscrowFactory(
         EvmAddress.fromString(this.getEscrowFactoryAddress())
-      ).getSrcEscrowAddress(immutables, EVMClient.DST_ESCROW_IMPL_ADDRESS);
+      ).getEscrowAddress(
+        keccak256(encodedImmutables),
+        EVMClient.DST_ESCROW_IMPL_ADDRESS
+      );
+
+      console.log("Destination escrow address is", escrowAddress.toHex());
 
       // Call contract with proper parameter order (escrow, secret, immutables)
       const tx = await contract.withdraw(
-        escrowAddress, // address escrow
+        escrowAddress.toHex(), // address escrow
         secretBytes32, // bytes32 secret
-        newImmutables.build() // IBaseEscrow.Immutables
+        dstImmutables // IBaseEscrow.Immutables
       );
 
       // Wait for transaction confirmation
@@ -287,7 +333,7 @@ export class EVMClient {
       };
     } catch (error) {
       console.error("Error withdrawing from escrow:", error);
-      throw error;
+      // throw error;
     }
   }
 

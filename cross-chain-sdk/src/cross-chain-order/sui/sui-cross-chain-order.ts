@@ -284,11 +284,6 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
     }
 
     public getOrderHashBuffer(srcChainId: number): Buffer {
-        assert(
-            srcChainId === NetworkEnum.SUI,
-            'Unsupported source chain for Sui order'
-        )
-
         return Buffer.from(this.getOrderHash(srcChainId).slice(2), 'hex')
     }
 

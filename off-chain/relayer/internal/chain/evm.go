@@ -293,7 +293,7 @@ func FetchEvmDstEscrowEvent(
 				return nil, time.Time{}, errors.New("failed to unpack escrow address")
 			}
 
-			hashlock, ok := unpacked[1].(common.Hash)
+			hashlock, ok := unpacked[1].([32]byte)
 			if !ok {
 				return nil, time.Time{}, errors.New("failed to unpack hashlock")
 			}
