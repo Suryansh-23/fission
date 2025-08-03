@@ -146,14 +146,18 @@ public fun create_new<T>(
     let auction_details = order::get_auction_details(order);
     let current_time = clock.timestamp_ms();
 
-    let taking_amount = auction_calculator::get_taking_amount(
-        order_making_amount,
-        order_taking_amount,
-        actual_making_amount,
-        auction_details,
-        current_time,
-    );
+    let mut taking_amount = order_taking_amount;
 
+    if (!auction_calculator::get_point_and_time_deltas(&auction_details).is_empty()) {
+        taking_amount = auction_calculator::get_taking_amount(
+            order_making_amount,
+            order_taking_amount,
+            actual_making_amount,
+            auction_details,
+            current_time,
+        );
+    };
+    
     let mut hashlock = merkle_data.hashlock_info;
 
     if (is_multiple_fills_allowed) {

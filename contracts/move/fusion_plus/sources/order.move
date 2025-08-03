@@ -20,7 +20,7 @@ public struct Order<phantom T> has key {
     making_amount: u64,
     taking_amount: u64,
     maker_asset: address,
-    taker_asset: address,
+    taker_asset: vector<u8>,
     salt: vector<u8>,
     is_partial_fill_allowed: bool,
     is_multiple_fills_allowed: bool,
@@ -52,10 +52,9 @@ fun init(_ctx: &mut TxContext) {}
 // Function to create order object (maker calls this to deposit coins)
 public entry fun create_order<T>(
     receiver: vector<u8>, // this will be an EVM address (20 bytes)
-    making_amount: u64,
     taking_amount: u64,
     maker_asset: address,
-    taker_asset: address,
+    taker_asset: vector<u8>,
     salt: vector<u8>,
     is_partial_fill_allowed: bool,
     is_multiple_fills_allowed: bool,
@@ -66,7 +65,7 @@ public entry fun create_order<T>(
     points_and_time_deltas: vector<u8>,
     ctx: &mut TxContext,
 ) {
-    assert!(coin::value(&deposit) == making_amount, EInvalidMakingAmount);
+    let making_amount = coin::value(&deposit);
 
     let data = OrderHashData {
         salt,

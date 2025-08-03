@@ -123,3 +123,9 @@ fun extract_u16(data: &vector<u8>, offset: u64): u64 {
     let byte2 = *vector::borrow(data, offset + 1) as u64;
     (byte1 << 8) | byte2
 }
+
+public fun get_point_and_time_deltas(
+    auction_details: &AuctionDetails,
+): vector<u8> {
+    auction_details.points_and_time_deltas
+}

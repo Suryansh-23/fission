@@ -157,11 +157,7 @@ fun withdraw_internal<T>(
     safety_deposit
 }
 
-public fun cancel<T>(
-    clock: &Clock,
-    escrow: &mut DstEscrow<T>,
-    ctx: &mut TxContext,
-): Coin<SUI> {
+public fun cancel<T>(clock: &Clock, escrow: &mut DstEscrow<T>, ctx: &mut TxContext): Coin<SUI> {
     let current_time = clock.timestamp_ms();
     let sender = tx_context::sender(ctx);
 
