@@ -7,6 +7,7 @@ import {
   QuoteParams
 } from '@1inch/cross-chain-sdk';
 import { SuiOrder, CreateOrderParams } from './sui-order';
+import { ERC20Service } from './erc20';
 import suiClientService from './sui-client';
 
 // Define PresetEnum locally if not exported
@@ -165,6 +166,15 @@ class CrossChainSDKService {
 
   async createOrder(quote: Quote, params: OrderParams): Promise<{ hash: string; quoteId: string; order: any }> {
     console.log('[CrossChainSDK] Creating order with params:', params);
+    console.log('[CrossChainSDK] Quote properties:', Object.keys(quote));
+    
+    // Extract token addresses from the quote context (these come from our mock quote)
+    const srcTokenAddress = (quote as any).srcTokenAddress || '0x0000000000000000000000000000000000000000';
+    const dstTokenAddress = (quote as any).dstTokenAddress || '0x0000000000000000000000000000000000000000';
+    
+    console.log('[CrossChainSDK] Extracted token addresses from quote:');
+    console.log('[CrossChainSDK]   Source token address:', srcTokenAddress);
+    console.log('[CrossChainSDK]   Destination token address:', dstTokenAddress);
     
     // Mock implementation for testing
     const mockOrder = {
@@ -174,16 +184,18 @@ class CrossChainSDKService {
       receiver: params.walletAddress,
       makingAmount: BigInt(quote.srcTokenAmount),
       takingAmount: BigInt(quote.dstTokenAmount),
-      makerAsset: '0x0000000000000000000000000000000000000000', // Placeholder
-      takerAsset: '0x0000000000000000000000000000000000000000', // Placeholder
+      makerAsset: srcTokenAddress, // Use actual token addresses
+      takerAsset: dstTokenAddress, // Use actual token addresses
     };
     
     const orderHash = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32)))
       .map(b => b.toString(16).padStart(2, '0')).join('');
     
-    console.log('[CrossChainSDK] Mock order created');
+    console.log('[CrossChainSDK] Mock order created with real token addresses');
     console.log('[CrossChainSDK] Order hash:', orderHash);
     console.log('[CrossChainSDK] Salt:', mockOrder.salt);
+    console.log('[CrossChainSDK] Maker asset (source token):', mockOrder.makerAsset);
+    console.log('[CrossChainSDK] Taker asset (destination token):', mockOrder.takerAsset);
     
     return {
       hash: orderHash,
@@ -199,78 +211,23 @@ class CrossChainSDKService {
     _secretHashes: string[],
     receiverAddress?: string,
     selectedTokens?: { payToken: any, receiveToken: any },
-    suiWallet?: any // Add wallet parameter for Sui signing
+    suiWallet?: any, // Add wallet parameter for Sui signing
+    evmClients?: { walletClient: any, publicClient: any, account: string } // Add EVM clients for approval
   ): Promise<any> {
     console.log('[CrossChainSDK] Submitting order for chain:', srcChainId);
     console.log('[CrossChainSDK] Quote ID:', quoteId);
     console.log('[CrossChainSDK] Receiver address:', receiverAddress);
     console.log('[CrossChainSDK] Selected tokens:', selectedTokens);
     console.log('[CrossChainSDK] Sui wallet provided:', !!suiWallet);
+    console.log('[CrossChainSDK] EVM clients provided:', !!evmClients);
     
     // Check if source chain is Sui (chainId 0)
     if (srcChainId === 0) {
       console.log('[CrossChainSDK] Source chain is Sui, creating Sui order...');
       return await this.createSuiOrder(order, quoteId, receiverAddress, selectedTokens, suiWallet);
     } else {
-      console.log('[CrossChainSDK] Source chain is EVM, using standard submission...');
-      
-      // Log comprehensive swap data for EVM source chain
-      console.log('[CrossChainSDK] === EVM SOURCE CHAIN SWAP DETAILS ===');
-      console.log('[CrossChainSDK] Maker (EVM address):', order.maker);
-      console.log('[CrossChainSDK] Receiver address (provided):', receiverAddress || 'Not provided');
-      console.log('[CrossChainSDK] Receiver (final):', receiverAddress || order.maker);
-      
-      // Token addresses
-      console.log('[CrossChainSDK] Source token address (EVM):', order.makerAsset);
-      console.log('[CrossChainSDK] Destination token address:', order.takerAsset);
-      
-      // Amounts
-      console.log('[CrossChainSDK] Making amount (user gives):', order.makingAmount?.toString() || 'N/A');
-      console.log('[CrossChainSDK] Taking amount (user receives):', order.takingAmount?.toString() || 'N/A');
-      
-      // Token details from UI
-      if (selectedTokens) {
-        console.log('[CrossChainSDK] Pay token (UI selected):', {
-          symbol: selectedTokens.payToken.symbol,
-          name: selectedTokens.payToken.name,
-          address: selectedTokens.payToken.address,
-          chainId: selectedTokens.payToken.chainId,
-          decimals: selectedTokens.payToken.decimals
-        });
-        
-        console.log('[CrossChainSDK] Receive token (UI selected):', {
-          symbol: selectedTokens.receiveToken.symbol,
-          name: selectedTokens.receiveToken.name,
-          address: selectedTokens.receiveToken.address,
-          chainId: selectedTokens.receiveToken.chainId,
-          decimals: selectedTokens.receiveToken.decimals
-        });
-        
-        // Convert amounts to human readable
-        const payAmountHuman = (Number(order.makingAmount) / Math.pow(10, selectedTokens.payToken.decimals)).toFixed(6);
-        const receiveAmountHuman = (Number(order.takingAmount) / Math.pow(10, selectedTokens.receiveToken.decimals)).toFixed(6);
-        
-        console.log('[CrossChainSDK] Human readable amounts:');
-        console.log('[CrossChainSDK]   Pay:', payAmountHuman, selectedTokens.payToken.symbol, 'on EVM');
-        console.log('[CrossChainSDK]   Receive:', receiveAmountHuman, selectedTokens.receiveToken.symbol, 'on Sui');
-      }
-      
-      // Fill preferences
-      console.log('[CrossChainSDK] Fill preferences:');
-      console.log('[CrossChainSDK]   Allow partial fills:', this.fillPreferences.allowPartialFills);
-      console.log('[CrossChainSDK]   Allow multiple fills:', this.fillPreferences.allowMultipleFills);
-      
-      // Order metadata
-      console.log('[CrossChainSDK] Order metadata:');
-      console.log('[CrossChainSDK]   Salt:', order.salt);
-      console.log('[CrossChainSDK]   Quote ID:', quoteId);
-      console.log('[CrossChainSDK]   Source chain ID:', srcChainId);
-      console.log('[CrossChainSDK] =======================================');
-      
-      // Mock EVM submission for now
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log('[CrossChainSDK] EVM order submitted successfully (mock)');
-      return { success: true, txHash: 'mock-evm-tx-hash' };
+      console.log('[CrossChainSDK] Source chain is EVM, handling EVM approval and submission...');
+      return await this.createEvmOrder(order, quoteId, receiverAddress, selectedTokens, evmClients);
     }
   }
 
@@ -392,6 +349,147 @@ class CrossChainSDKService {
       
     } catch (error) {
       console.error('[CrossChainSDK] Failed to create Sui order:', error);
+      throw error;
+    }
+  }
+
+  private async createEvmOrder(
+    order: any, 
+    quoteId: string, 
+    receiverAddress?: string, 
+    selectedTokens?: { payToken: any, receiveToken: any },
+    evmClients?: { walletClient: any, publicClient: any, account: string }
+  ): Promise<any> {
+    try {
+      console.log('[CrossChainSDK] === EVM SOURCE CHAIN ORDER CREATION ===');
+      
+      // Log comprehensive swap data for EVM source chain
+      console.log('[CrossChainSDK] Maker (EVM address):', order.maker);
+      console.log('[CrossChainSDK] Receiver address (provided):', receiverAddress || 'Not provided');
+      console.log('[CrossChainSDK] Receiver (final):', receiverAddress || order.maker);
+      
+      // Token addresses
+      console.log('[CrossChainSDK] Source token address (EVM):', order.makerAsset);
+      console.log('[CrossChainSDK] Destination token address:', order.takerAsset);
+      console.log('[CrossChainSDK] Note: These should now show real token addresses, not placeholders');
+      
+      // Amounts
+      console.log('[CrossChainSDK] Making amount (user gives):', order.makingAmount?.toString() || 'N/A');
+      console.log('[CrossChainSDK] Taking amount (user receives):', order.takingAmount?.toString() || 'N/A');
+      
+      // Token details from UI
+      if (selectedTokens) {
+        console.log('[CrossChainSDK] Pay token (UI selected):', {
+          symbol: selectedTokens.payToken.symbol,
+          name: selectedTokens.payToken.name,
+          address: selectedTokens.payToken.address,
+          chainId: selectedTokens.payToken.chainId,
+          decimals: selectedTokens.payToken.decimals
+        });
+        
+        console.log('[CrossChainSDK] Receive token (UI selected):', {
+          symbol: selectedTokens.receiveToken.symbol,
+          name: selectedTokens.receiveToken.name,
+          address: selectedTokens.receiveToken.address,
+          chainId: selectedTokens.receiveToken.chainId,
+          decimals: selectedTokens.receiveToken.decimals
+        });
+        
+        // Convert amounts to human readable
+        const payAmountHuman = (Number(order.makingAmount) / Math.pow(10, selectedTokens.payToken.decimals)).toFixed(6);
+        const receiveAmountHuman = (Number(order.takingAmount) / Math.pow(10, selectedTokens.receiveToken.decimals)).toFixed(6);
+        
+        console.log('[CrossChainSDK] Human readable amounts:');
+        console.log('[CrossChainSDK]   Pay:', payAmountHuman, selectedTokens.payToken.symbol, 'on EVM');
+        console.log('[CrossChainSDK]   Receive:', receiveAmountHuman, selectedTokens.receiveToken.symbol, 'on Sui');
+      }
+      
+      // Fill preferences
+      console.log('[CrossChainSDK] Fill preferences:');
+      console.log('[CrossChainSDK]   Allow partial fills:', this.fillPreferences.allowPartialFills);
+      console.log('[CrossChainSDK]   Allow multiple fills:', this.fillPreferences.allowMultipleFills);
+      
+      // Order metadata
+      console.log('[CrossChainSDK] Order metadata:');
+      console.log('[CrossChainSDK]   Salt:', order.salt);
+      console.log('[CrossChainSDK]   Quote ID:', quoteId);
+      console.log('[CrossChainSDK] =======================================');
+
+      // Step 1: Handle ERC20 approval if needed
+      if (evmClients && selectedTokens) {
+        console.log('[CrossChainSDK] === DETAILED APPROVAL DEBUG ===');
+        console.log('[CrossChainSDK] selectedTokens.payToken:', JSON.stringify(selectedTokens.payToken, null, 2));
+        console.log('[CrossChainSDK] Token address:', selectedTokens.payToken.address);
+        console.log('[CrossChainSDK] Token symbol:', selectedTokens.payToken.symbol);
+        console.log('[CrossChainSDK] Token name:', selectedTokens.payToken.name);
+        console.log('[CrossChainSDK] Order makingAmount:', order.makingAmount?.toString());
+        console.log('[CrossChainSDK] Order makingAmount type:', typeof order.makingAmount);
+        console.log('[CrossChainSDK] Token decimals:', selectedTokens.payToken.decimals);
+        console.log('[CrossChainSDK] User account:', evmClients.account);
+        console.log('[CrossChainSDK] ================================');
+        
+        // Ensure we have a valid amount
+        const approvalAmount = typeof order.makingAmount === 'bigint' 
+          ? order.makingAmount 
+          : BigInt(order.makingAmount || '0');
+          
+        console.log('[CrossChainSDK] Approval amount (bigint):', approvalAmount.toString());
+        console.log('[CrossChainSDK] Approval amount in human units:', (Number(approvalAmount) / Math.pow(10, selectedTokens.payToken.decimals)).toFixed(6));
+        
+        if (approvalAmount === BigInt(0)) {
+          throw new Error('Invalid approval amount: cannot approve 0 tokens');
+        }
+        
+        const isApprovalNeeded = await ERC20Service.isApprovalNeeded({
+          tokenAddress: selectedTokens.payToken.address,
+          ownerAddress: evmClients.account,
+          amount: approvalAmount,
+          publicClient: evmClients.publicClient
+        });
+
+        if (isApprovalNeeded) {
+          console.log('[CrossChainSDK] ERC20 approval required - requesting approval...');
+          console.log('[CrossChainSDK] About to call ERC20Service.approveToken with:');
+          console.log('[CrossChainSDK]   tokenAddress:', selectedTokens.payToken.address);
+          console.log('[CrossChainSDK]   amount:', approvalAmount.toString());
+          console.log('[CrossChainSDK]   decimals:', selectedTokens.payToken.decimals);
+          console.log('[CrossChainSDK]   account:', evmClients.account);
+          
+          const approvalResult = await ERC20Service.approveToken({
+            tokenAddress: selectedTokens.payToken.address,
+            amount: approvalAmount,
+            decimals: selectedTokens.payToken.decimals,
+            walletClient: evmClients.walletClient,
+            account: evmClients.account
+          });
+
+          if (!approvalResult.success) {
+            throw new Error(`ERC20 approval failed: ${approvalResult.error}`);
+          }
+
+          console.log('[CrossChainSDK] ERC20 approval successful:', approvalResult.txHash);
+        } else {
+          console.log('[CrossChainSDK] ERC20 approval not needed - sufficient allowance');
+        }
+      } else {
+        console.log('[CrossChainSDK] No EVM clients provided - skipping approval check');
+      }
+
+      // Step 2: Submit the order (mock for now)
+      console.log('[CrossChainSDK] Submitting EVM order to LOP...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const mockResult = {
+        success: true,
+        txHash: 'mock-evm-order-tx-hash-' + Date.now(),
+        approvalTxHash: evmClients ? 'mock-approval-tx-hash' : undefined
+      };
+      
+      console.log('[CrossChainSDK] EVM order submitted successfully (mock):', mockResult.txHash);
+      return mockResult;
+      
+    } catch (error) {
+      console.error('[CrossChainSDK] Failed to create EVM order:', error);
       throw error;
     }
   }

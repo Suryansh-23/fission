@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, ArrowUpDown, Clock, CheckCircle, Loader } from 'lucide-react';
 import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
-import { useAccount } from 'wagmi';
+import { useAccount, useWalletClient, usePublicClient } from 'wagmi';
 import { DEFAULT_EVM_TOKENS, DEFAULT_SUI_TOKENS } from '../constants/tokens';
 import crossChainSDKInstance, { OrderStatus, PresetEnum } from '../services/crossChainSDK';
 import type { Quote } from '@1inch/cross-chain-sdk';
@@ -114,6 +114,8 @@ const SwapInterface: React.FC = () => {
   const suiAccount = useCurrentAccount();
   const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const { address: evmAddress } = useAccount();
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
   
   const [payChain, setPayChain] = useState<Chain>(chains[0]); // Default to Ethereum
   const [receiveChain, setReceiveChain] = useState<Chain>(chains[1]); // Default to Sui
@@ -187,14 +189,26 @@ const SwapInterface: React.FC = () => {
 
     setIsLoadingQuote(true);
     try {
-      console.log('🔍 Getting cross-chain quote...');
-      
-      // Using mock data for now since SDK is not working
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API delay
-      
       // Calculate amounts based on input
       const inputAmount = parseFloat(payAmount);
       const outputAmount = inputAmount * 0.98; // 2% slippage simulation
+      
+      console.log('🔍 Getting cross-chain quote...');
+      console.log('[SwapInterface] === UI DATA CAPTURE ===');
+      console.log('[SwapInterface] Pay chain:', payChain);
+      console.log('[SwapInterface] Receive chain:', receiveChain);
+      console.log('[SwapInterface] Pay token selected:', payToken);
+      console.log('[SwapInterface] Receive token selected:', receiveToken);
+      console.log('[SwapInterface] Input amount:', payAmount);
+      console.log('[SwapInterface] Calculated output amount:', outputAmount.toString());
+      console.log('[SwapInterface] Connected wallets:', {
+        suiWallet: suiAccount?.address || 'Not connected',
+        evmWallet: evmAddress || 'Not connected'
+      });
+      console.log('[SwapInterface] ================================');
+      
+      // Using mock data for now since SDK is not working
+      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API delay
       
       // Create mock quote with dynamic amounts
       const mockQuote = {
@@ -204,6 +218,9 @@ const SwapInterface: React.FC = () => {
         quoteId: `mock-${Date.now()}`,
         srcChainId: payChain.chainId,
         dstChainId: receiveChain.chainId,
+        // Add token addresses for proper mapping
+        srcTokenAddress: payToken.address,
+        dstTokenAddress: receiveToken.address,
       };
       
       setQuote(mockQuote as any);
@@ -277,7 +294,8 @@ const SwapInterface: React.FC = () => {
       console.log('[SwapInterface] Submitting order to blockchain...');
       
       // For Sui orders, we need to pass the EVM address as receiver and the Sui wallet for signing
-      const receiverAddress = payChain.chainId === 0 ? evmAddress : undefined;
+      // For EVM orders, we need to pass the Sui address as receiver
+      const receiverAddress = payChain.chainId === 0 ? evmAddress : suiAccount?.address;
       const suiWallet = payChain.chainId === 0 ? { 
         signAndExecuteTransaction: (params: any) => {
           return new Promise((resolve, reject) => {
@@ -296,6 +314,21 @@ const SwapInterface: React.FC = () => {
       } : undefined;
       
       console.log('[SwapInterface] Sui wallet object:', suiWallet);
+      console.log('[SwapInterface] Receiver address for cross-chain:', {
+        payChain: payChain.name,
+        receiveChain: receiveChain.name,
+        receiverAddress,
+        reasoning: payChain.chainId === 0 ? 'Sui→EVM: receiver=EVM address' : 'EVM→Sui: receiver=Sui address'
+      });
+      
+      // Prepare EVM clients for approval (if needed)
+      const evmClients = payChain.chainId !== 0 && walletClient && publicClient && evmAddress ? {
+        walletClient,
+        publicClient,
+        account: evmAddress as string
+      } : undefined;
+      
+      console.log('[SwapInterface] EVM clients prepared:', !!evmClients);
       
       await crossChainSDKInstance.submitOrder(
         quote.srcChainId,
@@ -304,7 +337,8 @@ const SwapInterface: React.FC = () => {
         secretHashes,
         receiverAddress,
         { payToken, receiveToken }, // Pass selected tokens for proper mapping
-        suiWallet // Pass connected Sui wallet for signing
+        suiWallet, // Pass connected Sui wallet for signing
+        evmClients // Pass EVM clients for approval
       );
       
       console.log('[SwapInterface] Order submitted successfully');

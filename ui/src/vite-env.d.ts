@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_FUSION_SOURCE: string
   readonly VITE_SUI_RPC_URL: string
   readonly VITE_SUI_PACKAGE_ID: string
+  readonly VITE_LOP_ADDRESS: string
 }
 
 interface ImportMeta {

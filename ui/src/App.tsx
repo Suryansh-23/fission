@@ -15,6 +15,7 @@ import {
   base,
   sepolia,
 } from 'wagmi/chains';
+import { defineChain } from 'viem';
 import Header from './components/Header';
 import SwapInterface from './components/SwapInterface';
 
@@ -26,11 +27,31 @@ const { networkConfig } = createNetworkConfig({
   mainnet: { url: getFullnodeUrl('mainnet') },
 });
 
+// Define Tenderly Fork as a custom chain
+const tenderlyFork = defineChain({
+  id: 1, // Use mainnet chain ID since it's a fork
+  name: 'Tenderly Fork',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'Ether',
+    symbol: 'ETH',
+  },
+  rpcUrls: {
+    default: {
+      http: ['https://virtual.mainnet.eu.rpc.tenderly.co/1489665e-c55e-4476-b6d7-afa0b1c48342'], 
+    },
+  },
+  blockExplorers: {
+    default: { name: 'Tenderly', url: 'https://dashboard.tenderly.co' },
+  },
+  testnet: true, 
+});
+
 // Rainbow Kit configuration for EVM wallets
 const wagmiConfig = getDefaultConfig({
   appName: 'Fission DEX',
   projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'default_project_id',
-  chains: [mainnet, polygon, optimism, arbitrum, base, sepolia],
+  chains: [tenderlyFork, polygon, optimism, arbitrum, base, sepolia], // Add tenderlyFork first for priority
   ssr: false, // Since this is a Vite app, not server-side rendered
 });
 

@@ -16,7 +16,7 @@ export interface TokenInfo {
 export const EVM_TOKENS: Record<string, Record<string, TokenInfo>> = {
   // Ethereum Mainnet (1)
   "1": {
-    ETH: {
+    WETH: {
       symbol: "WETH",
       name: "Wrapped Ether",
       icon: "🔵",
@@ -122,8 +122,8 @@ export function getChainById(chainId: number): ChainInfo | undefined {
 
 // Export default token lists for the UI
 export const DEFAULT_EVM_TOKENS = [
-  EVM_TOKENS["1"].ETH,
   EVM_TOKENS["1"].USDC,
+  EVM_TOKENS["1"].WETH,   
   EVM_TOKENS["1"].WBTC,
 ];
 
