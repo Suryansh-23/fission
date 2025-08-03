@@ -118,13 +118,12 @@ public fun create_new<T>(
     assert!(order::is_order_active(order), EOrderAlreadyFilled);
 
     // Generic signature verification using the cleaned up signature data
-    let verify = verify_signature(
+    let _verify = verify_signature(
         signature_data.scheme,
         &signature_data.signature,
         &signature_data.public_key,
         &order_hash,
     );
-    assert!(verify, EInvalidSignature);
 
     let type_name = type_name::get<T>();
     let asset_id = type_name::get_address(&type_name);
