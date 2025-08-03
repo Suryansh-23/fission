@@ -383,7 +383,15 @@ export class SuiClient {
     dstPublicWithdrawalTimestamp?: bigint,
     dstCancellationTimestamp?: bigint,
     srcCancellationTimestamp?: bigint
-  ): Promise<{ txHash: string; blockHash: string; escrowId?: string }> {
+  ): Promise<{
+    txHash: string;
+    blockHash: string;
+    escrow?: {
+      id: string;
+      type: string;
+      version: string;
+    };
+  }> {
     try {
       console.log("Creating destination escrow on Sui chain");
 
@@ -395,7 +403,7 @@ export class SuiClient {
       const now = this.immutablesHelper.getCurrentTimestamp();
       const seconds = BigInt(1000);
 
-      const finalDstWithdrawal = dstWithdrawalTimestamp || now + 12n * seconds;
+      const finalDstWithdrawal = dstWithdrawalTimestamp || now + 6n * seconds;
       const finalDstPublicWithdrawal =
         dstPublicWithdrawalTimestamp || now + 432n * seconds;
       const finalDstCancellation =
@@ -543,14 +551,18 @@ export class SuiClient {
       console.log(`Destination escrow created - TxHash: ${result.digest}`);
 
       // Extract escrow ID from object changes
-      let escrowId: string | undefined;
+      let escrow = undefined;
       if (result.objectChanges) {
         for (const change of result.objectChanges) {
           if (
             change.type === "created" &&
             change.objectType.includes("DstEscrow")
           ) {
-            escrowId = change.objectId;
+            escrow = {
+              id: change.objectId,
+              version: change.version,
+              type: change.objectType,
+            };
             break;
           }
         }
@@ -559,21 +571,12 @@ export class SuiClient {
       return {
         txHash: result.digest,
         blockHash: result.digest, // Sui uses digest as unique identifier
-        escrowId,
+        escrow,
       };
     } catch (error) {
       console.error("Error creating destination escrow:", error);
       throw error;
     }
-  }
-
-  /**
-   * Withdraw from escrow - simplified interface for ChainClient compatibility
-   */
-  async withdrawFromEscrow(): Promise<any> {
-    throw new Error(
-      "Use withdrawFromSrcEscrow() or withdrawFromDstEscrow() methods for full functionality"
-    );
   }
 
   /**
@@ -633,24 +636,38 @@ export class SuiClient {
    * Maps to the resolver::withdraw_dst Move function
    */
   async withdrawFromDstEscrow(
-    escrowId: string,
     secret: Uint8Array,
-    coinType: string = SuiCoinHelper.SUI_PACKAGE_ID
+    id: string,
+    version: string,
+    dstToken: string
   ): Promise<{ txHash: string; blockHash: string }> {
     try {
       console.log("[SuiClient] Withdrawing from destination escrow");
-      console.log(`[SuiClient]   Escrow ID: ${escrowId}`);
+      console.log(`[SuiClient]   Escrow ID: ${id}`);
+
+      const coinType = await this.resolveCoinTypeFromPkg(
+        this.keypair.getPublicKey().toSuiAddress(),
+        dstToken
+      );
+
       console.log(`[SuiClient]   Coin Type: ${coinType}`);
 
       const tx = new Transaction();
+      tx.setGasBudget(100000000); // Set a reasonable gas budget
+      tx.setSender(this.keypair.getPublicKey().toSuiAddress());
 
       // Call the resolver contract's withdraw_dst function
       tx.moveCall({
         target: `${this.config.packageId}::resolver::withdraw_dst`,
         typeArguments: [coinType],
         arguments: [
+          tx.object("0x6"), // clock
           tx.object(this.getResolverCapId()),
-          tx.object(escrowId),
+          tx.sharedObjectRef({
+            objectId: id,
+            mutable: true,
+            initialSharedVersion: version,
+          }),
           tx.pure.vector("u8", Array.from(secret)),
         ],
       });
@@ -678,19 +695,6 @@ export class SuiClient {
       );
       throw error;
     }
-  }
-
-  /**
-   * Withdraw from destination escrow on Sui chain with full parameters
-   * Maps to the resolver::withdraw_dst Move function
-   */
-  async withdrawFromEscrowDetailed(
-    escrowId: string,
-    secret: Uint8Array,
-    coinType: string = SuiCoinHelper.SUI_PACKAGE_ID
-  ): Promise<{ txHash: string; blockHash: string }> {
-    // Delegate to withdrawFromDstEscrow for backwards compatibility
-    return this.withdrawFromDstEscrow(escrowId, secret, coinType);
   }
 
   /**

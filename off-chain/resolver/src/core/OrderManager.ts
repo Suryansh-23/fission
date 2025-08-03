@@ -30,7 +30,11 @@ interface StoredOrderData {
   isPartialFill?: boolean;
   // Sui escrow IDs for object-based tracking
   srcEscrowId?: string;
-  dstEscrowId?: string;
+  dstEscrow?: {
+    id: string;
+    version?: string;
+    type?: string;
+  };
 }
 
 export interface SecretData {
@@ -549,10 +553,14 @@ export class OrderManager {
         );
 
         // Store destination escrow ID if available (for future use in withdrawals/cancellations)
-        if (dstResult.escrowId) {
-          storedOrder.dstEscrowId = dstResult.escrowId;
+        if (dstResult.escrow) {
+          storedOrder.dstEscrow = {
+            id: dstResult.escrow.id,
+            version: dstResult.escrow.version,
+            type: dstResult.escrow.type,
+          };
           console.log(
-            `[OrderManager] Stored destination escrow ID: ${dstResult.escrowId}`
+            `[OrderManager] Stored destination escrow ID: ${dstResult.escrow.id}`
           );
         } else {
           console.log(
@@ -812,87 +820,47 @@ export class OrderManager {
         console.log(`EVM withdrawal successful:`, result);
       } else {
         // For Sui chains, use escrow ID from stored data
-        const { originalParams } = storedOrder;
-        const srcIsEVM = this.isEVMChain(originalParams.srcChainId);
-
-        // Determine if this is source or destination escrow on Sui
-        // If source is EVM and destination is Sui (EVM -> Sui), withdraw from destination escrow
-        // If source is Sui and destination is EVM (Sui -> EVM), withdraw from source escrow
-        const isWithdrawFromDst = srcIsEVM; // EVM -> Sui means withdraw from Sui destination
-
-        let escrowId: string | undefined;
-        let targetAddress: string | undefined;
-
-        if (isWithdrawFromDst) {
-          // Withdrawing from destination escrow (ETH to Sui)
-          escrowId = storedOrder.dstEscrowId;
-          if (!escrowId) {
-            console.error(
-              "[OrderManager] Destination escrow ID not found for Sui withdrawal"
-            );
-            console.log(
-              "[OrderManager] TODO: Implement escrow ID extraction from relayer or transaction events"
-            );
-            return;
-          }
-
-          console.log(
-            `[OrderManager] Withdrawing from Sui destination escrow...`
-          );
-          console.log(`[OrderManager]   Escrow ID: ${escrowId}`);
-          console.log(`[OrderManager]   Direction: ETH → Sui`);
-          const secretBytes = new Uint8Array(
-            Buffer.from(secret.replace("0x", ""), "hex")
-          );
-          const coinType = this.getSuiCoinType(storedOrder, "dst");
-          console.log(`[OrderManager]   Coin Type: ${coinType}`);
-
-          const result = await this.suiClient.withdrawFromDstEscrow(
-            escrowId,
-            secretBytes,
-            coinType
+        let escrow: { id: string; version?: string; type?: string } | undefined;
+        // Withdrawing from destination escrow (ETH to Sui)
+        escrow = storedOrder.dstEscrow;
+        if (!escrow) {
+          console.error(
+            "[OrderManager] Destination escrow ID not found for Sui withdrawal"
           );
           console.log(
-            `[OrderManager] Sui destination withdrawal successful:`,
-            result
+            "[OrderManager] TODO: Implement escrow ID extraction from relayer or transaction events"
           );
-        } else {
-          // Withdrawing from source escrow (Sui to ETH)
-          escrowId = storedOrder.srcEscrowId;
-          if (!escrowId) {
-            console.error(
-              "[OrderManager] Source escrow ID not found for Sui withdrawal"
-            );
-            console.log(
-              "[OrderManager] TODO: Implement escrow ID extraction from relayer or transaction events"
-            );
-            return;
-          }
-
-          // For source escrow withdrawal, we need a target address (on destination EVM chain)
-          targetAddress = this.evmClient.getAddress();
-
-          console.log(`[OrderManager] Withdrawing from Sui source escrow...`);
-          console.log(`[OrderManager]   Escrow ID: ${escrowId}`);
-          console.log(`[OrderManager]   Direction: Sui → ETH`);
-          console.log(`[OrderManager]   Target Address: ${targetAddress}`);
-          const secretBytes = new Uint8Array(
-            Buffer.from(secret.replace("0x", ""), "hex")
-          );
-          const coinType = this.getSuiCoinType(storedOrder, "src");
-          console.log(`[OrderManager]   Coin Type: ${coinType}`);
-
-          const result = await this.suiClient.withdrawFromSrcEscrow(
-            escrowId,
-            secretBytes,
-            targetAddress,
-            coinType
-          );
-          console.log(
-            `[OrderManager] Sui source withdrawal successful:`,
-            result
-          );
+          return;
         }
+
+        console.log(
+          `[OrderManager] Withdrawing from Sui destination escrow...`
+        );
+        console.log(`[OrderManager]   Escrow ID: ${escrow.id}`);
+        console.log(`[OrderManager]   Direction: ETH → Sui`);
+        const secretBytes = new Uint8Array(
+          Buffer.from(secret.replace("0x", ""), "hex")
+        );
+        const coinType = this.getSuiCoinType(storedOrder, "dst");
+        console.log(`[OrderManager]   Coin Type: ${coinType}`);
+
+        // dstWithdrawalTimelock
+        console.log(
+          `[OrderManager]   Waiting for destination withdrawal timelock...`
+        );
+        // Wait for the timelock period before withdrawal
+        await this.sleep(6000);
+
+        const result = await this.suiClient.withdrawFromDstEscrow(
+          secretBytes,
+          escrow.id,
+          escrow.version!,
+          storedOrder.originalParams.order.takerAsset
+        );
+        console.log(
+          `[OrderManager] Sui destination withdrawal successful:`,
+          result
+        );
       }
     } catch (error) {
       console.error("Error triggering withdrawal:", error);
@@ -997,104 +965,6 @@ export class OrderManager {
       this.wsClient.sendToRelayer(relayerMessage);
     } catch (error) {
       console.error("Failed to send execution data to relayer:", error);
-    }
-  }
-
-  /**
-   * Withdraw funds from escrow after successful cross-chain execution
-   * @param orderHash - Hash of the order to withdraw from
-   * @param side - Whether to withdraw from 'src' or 'dst' escrow
-   * @param secret - Secret to unlock the escrow
-   * @param escrowAddress - Address of the escrow contract
-   */
-  public async withdrawFromEscrow(
-    orderHash: string,
-    side: "src" | "dst",
-    secret: string,
-    escrowAddress: string
-  ): Promise<{ txHash: string; blockHash: string }> {
-    console.log(`Withdrawing from ${side} escrow: ${escrowAddress}`);
-
-    const storedOrder = this.orders.get(orderHash);
-    if (!storedOrder) {
-      throw new Error(`Order not found: ${orderHash}`);
-    }
-
-    try {
-      // Determine which client to use based on side and order direction
-      const { originalParams } = storedOrder;
-      const srcIsEVM = this.isEVMChain(originalParams.srcChainId);
-      const useEVMClient = side === "src" ? srcIsEVM : !srcIsEVM;
-
-      if (useEVMClient) {
-        // Get immutables for the withdrawal
-        const immutables =
-          side === "src"
-            ? this.getSrcImmutables(storedOrder, srcIsEVM)
-            : this.getDstImmutables(storedOrder, srcIsEVM);
-
-        return await this.evmClient.withdrawFromEscrow(
-          escrowAddress,
-          secret,
-          immutables
-        );
-      } else {
-        // Use Sui client for withdrawal
-        const escrowId =
-          side === "src" ? storedOrder.srcEscrowId : storedOrder.dstEscrowId;
-        if (!escrowId) {
-          console.error(
-            `[OrderManager] ${side.toUpperCase()} escrow ID not found for Sui withdrawal`
-          );
-          console.log(
-            `[OrderManager] TODO: Implement escrow ID extraction from relayer or transaction events`
-          );
-          throw new Error(
-            `${side.toUpperCase()} escrow ID not found for Sui withdrawal`
-          );
-        }
-
-        console.log(`[OrderManager]   Sui Escrow ID: ${escrowId}`);
-        const secretBytes = new Uint8Array(
-          Buffer.from(secret.replace("0x", ""), "hex")
-        );
-        const coinType = this.getSuiCoinType(storedOrder, side);
-        console.log(`[OrderManager]   Coin Type: ${coinType}`);
-
-        if (side === "src") {
-          // Source escrow withdrawal requires target address
-          const targetAddress = this.evmClient.getAddress();
-          console.log(`[OrderManager]   Target Address: ${targetAddress}`);
-          console.log(`[OrderManager]   Calling Sui source withdrawal...`);
-          const result = await this.suiClient.withdrawFromSrcEscrow(
-            escrowId,
-            secretBytes,
-            targetAddress,
-            coinType
-          );
-          console.log(
-            `[OrderManager] Sui source withdrawal completed:`,
-            result
-          );
-          return result;
-        } else {
-          // Destination escrow withdrawal
-          console.log(`[OrderManager]   Calling Sui destination withdrawal...`);
-          const result = await this.suiClient.withdrawFromDstEscrow(
-            escrowId,
-            secretBytes,
-            coinType
-          );
-          console.log(
-            `[OrderManager] Sui destination withdrawal completed:`,
-            result
-          );
-          return result;
-        }
-      }
-    } catch (error) {
-      console.error(`Withdrawal failed for ${orderHash}:`, error);
-      throw error;
     }
   }
 

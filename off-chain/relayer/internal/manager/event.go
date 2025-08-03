@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"math/big"
 	"time"
 
 	"relayer/internal/chain"
@@ -115,89 +114,89 @@ func (m *Manager) handleTxHashEvent(parts []string) {
 			return
 		}
 
-		// P1 checks
-		// if srcEvt.SrcImmutables.Amount.String() != orderEntry.Order.LimitOrder.MakingAmount {
-		// m.logger.Printf("src amount mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.MakingAmount, srcEvt.SrcImmutables.Amount.String())
+		// // P1 checks
+		// // if srcEvt.SrcImmutables.Amount.String() != orderEntry.Order.LimitOrder.MakingAmount {
+		// // m.logger.Printf("src amount mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.MakingAmount, srcEvt.SrcImmutables.Amount.String())
+		// // 	return
+		// // }
+
+		// // src checks
+		// // maker is same as order
+		// if srcEvt.SrcImmutables.Maker.Hex() != orderEntry.Order.LimitOrder.Maker {
+		// 	m.logger.Printf("src maker mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.Maker, srcEvt.SrcImmutables.Maker.Hex())
 		// 	return
 		// }
 
-		// src checks
-		// maker is same as order
-		if srcEvt.SrcImmutables.Maker.Hex() != orderEntry.Order.LimitOrder.Maker {
-			m.logger.Printf("src maker mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.Maker, srcEvt.SrcImmutables.Maker.Hex())
-			return
-		}
-
-		// correct safety deposit
-		if srcEvt.SrcImmutables.SafetyDeposit.String() != quoteEntry.Quote.SrcSafetyDeposit {
-			m.logger.Printf("src safety deposit mismatch: expected %s, got %s", quoteEntry.Quote.SrcSafetyDeposit, srcEvt.SrcImmutables.SafetyDeposit.String())
-			return
-		}
-
-		// correct making token type
-		if srcEvt.SrcImmutables.Token.Hex() != orderEntry.Order.LimitOrder.MakerAsset {
-			m.logger.Printf("src token mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.MakerAsset, srcEvt.SrcImmutables.Token.Hex())
-			return
-		}
-
-		// correct making amount
-		// if srcEvt.SrcImmutables.Amount.String() != orderEntry.Order.LimitOrder.MakingAmount {
-		// 	m.logger.Printf("src amount mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.MakingAmount, srcEvt.SrcImmutables.Amount.String())
+		// // correct safety deposit
+		// if srcEvt.SrcImmutables.SafetyDeposit.String() != quoteEntry.Quote.SrcSafetyDeposit {
+		// 	m.logger.Printf("src safety deposit mismatch: expected %s, got %s", quoteEntry.Quote.SrcSafetyDeposit, srcEvt.SrcImmutables.SafetyDeposit.String())
 		// 	return
 		// }
 
-		// // if balance for the token is there
-		// srcBal, err := chain.FetchERC20Balance(m.evmClient, srcEvt.SrcImmutables.Token, srcEscrowAddress)
+		// // correct making token type
+		// if srcEvt.SrcImmutables.Token.Hex() != orderEntry.Order.LimitOrder.MakerAsset {
+		// 	m.logger.Printf("src token mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.MakerAsset, srcEvt.SrcImmutables.Token.Hex())
+		// 	return
+		// }
+
+		// // correct making amount
+		// // if srcEvt.SrcImmutables.Amount.String() != orderEntry.Order.LimitOrder.MakingAmount {
+		// // 	m.logger.Printf("src amount mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.MakingAmount, srcEvt.SrcImmutables.Amount.String())
+		// // 	return
+		// // }
+
+		// // // if balance for the token is there
+		// // srcBal, err := chain.FetchERC20Balance(m.evmClient, srcEvt.SrcImmutables.Token, srcEscrowAddress)
+		// // if err != nil {
+		// // 	m.logger.Printf("failed to fetch ERC20 balance: %s", err.Error())
+		// // 	return
+		// // }
+
+		// // if srcBal.Cmp(big.NewInt(0)) != +1 {
+		// // 	m.logger.Printf("src escrow balance is zero for %s: %s", srcEvt.SrcImmutables.Token.Hex(), srcBal.String())
+		// // 	return
+		// // }
+
+		// // dst checks
+		// // correct taking token type with dstImmutables & order
+		// // if srcEvt.DstImmutablesComplement.Token.Hex() != dstEvt.TokenPackageID || srcEvt.DstImmutablesComplement.Token.Hex() != orderEntry.Order.LimitOrder.TakerAsset {
+		// // 	m.logger.Printf("dst token mismatch: expected %s, got %s", dstEvt.TokenPackageID, srcEvt.DstImmutablesComplement.Token.Hex())
+		// // 	return
+		// // }
+
+		// // if amount mismatch
+		// if srcEvt.DstImmutablesComplement.Amount.String() != dstEvt.Amount.String() {
+		// 	m.logger.Printf("dst amount mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.TakingAmount, srcEvt.DstImmutablesComplement.Amount.String())
+		// 	return
+		// }
+
+		// // no need to check for dst safety deposit token type because of move
+		// // correct dst safety deposit amount
+		// dstSafetyDeposit, err := chain.FetchCoinFieldBalance(context.Background(), m.suiClient, string(dstEvt.ID.Data()), "safety_deposit")
 		// if err != nil {
-		// 	m.logger.Printf("failed to fetch ERC20 balance: %s", err.Error())
+		// 	m.logger.Printf("failed to fetch CoinField balance: %s", err.Error())
 		// 	return
 		// }
 
-		// if srcBal.Cmp(big.NewInt(0)) != +1 {
-		// 	m.logger.Printf("src escrow balance is zero for %s: %s", srcEvt.SrcImmutables.Token.Hex(), srcBal.String())
+		// quoteDstSafetyDep := new(big.Int)
+		// quoteDstSafetyDep.SetString(quoteEntry.Quote.DstSafetyDeposit, 10)
+
+		// if srcEvt.DstImmutablesComplement.SafetyDeposit.Cmp(quoteDstSafetyDep) != 0 || dstSafetyDeposit.Cmp(quoteDstSafetyDep) != 0 {
+		// 	m.logger.Printf("dst safety deposit mismatch: expected %s, got %s", quoteEntry.Quote.DstSafetyDeposit, dstSafetyDeposit.String())
 		// 	return
 		// }
 
-		// dst checks
-		// correct taking token type with dstImmutables & order
-		// if srcEvt.DstImmutablesComplement.Token.Hex() != dstEvt.TokenPackageID || srcEvt.DstImmutablesComplement.Token.Hex() != orderEntry.Order.LimitOrder.TakerAsset {
-		// 	m.logger.Printf("dst token mismatch: expected %s, got %s", dstEvt.TokenPackageID, srcEvt.DstImmutablesComplement.Token.Hex())
+		// // correct dst taking amount
+		// dstBal, err := chain.FetchCoinFieldBalance(context.Background(), m.suiClient, string(dstEvt.ID.Data()), "deposit")
+		// if err != nil {
+		// 	m.logger.Printf("failed to fetch CoinField balance: %s", err.Error())
 		// 	return
 		// }
 
-		// if amount mismatch
-		if srcEvt.DstImmutablesComplement.Amount.String() != dstEvt.Amount.String() {
-			m.logger.Printf("dst amount mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.TakingAmount, srcEvt.DstImmutablesComplement.Amount.String())
-			return
-		}
-
-		// no need to check for dst safety deposit token type because of move
-		// correct dst safety deposit amount
-		dstSafetyDeposit, err := chain.FetchCoinFieldBalance(context.Background(), m.suiClient, string(dstEvt.ID.Data()), "safety_deposit")
-		if err != nil {
-			m.logger.Printf("failed to fetch CoinField balance: %s", err.Error())
-			return
-		}
-
-		quoteDstSafetyDep := new(big.Int)
-		quoteDstSafetyDep.SetString(quoteEntry.Quote.DstSafetyDeposit, 10)
-
-		if srcEvt.DstImmutablesComplement.SafetyDeposit.Cmp(quoteDstSafetyDep) != 0 || dstSafetyDeposit.Cmp(quoteDstSafetyDep) != 0 {
-			m.logger.Printf("dst safety deposit mismatch: expected %s, got %s", quoteEntry.Quote.DstSafetyDeposit, dstSafetyDeposit.String())
-			return
-		}
-
-		// correct dst taking amount
-		dstBal, err := chain.FetchCoinFieldBalance(context.Background(), m.suiClient, string(dstEvt.ID.Data()), "deposit")
-		if err != nil {
-			m.logger.Printf("failed to fetch CoinField balance: %s", err.Error())
-			return
-		}
-
-		if dstBal.Cmp(big.NewInt(0)) != +1 {
-			m.logger.Printf("dst escrow balance is zero for %s: %s", dstEvt.ID.Data(), dstBal.String())
-			return
-		}
+		// if dstBal.Cmp(big.NewInt(0)) != +1 {
+		// 	m.logger.Printf("dst escrow balance is zero for %s: %s", dstEvt.ID.Data(), dstBal.String())
+		// 	return
+		// }
 
 		ttl := computeTTL(srcTimestamp, dstTimestamp, quoteEntry.Quote)
 		if ttl > 0 {
@@ -247,29 +246,30 @@ func (m *Manager) handleTxHashEvent(parts []string) {
 			return
 		}
 
-		// maker is same as order
-		if string(srcEvt.Maker) != orderEntry.Order.LimitOrder.Maker {
-			m.logger.Printf("src maker mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.Maker, srcEvt.Maker)
-			return
-		}
-
-		// safetDeposit, err := chain.Fetch
-
-		// correct safety deposit
-		// if srcEvt.String() != quoteEntry.Quote.SrcSafetyDeposit {
-		// 	m.logger.Printf("src safety deposit mismatch: expected %s, got %s", quoteEntry.Quote.SrcSafetyDeposit, srcEvt.SafetyDeposit.String())
+		// // P1 checks
+		// // maker is same as order
+		// if string(srcEvt.Maker) != orderEntry.Order.LimitOrder.Maker {
+		// 	m.logger.Printf("src maker mismatch: expected %s, got %s", orderEntry.Order.LimitOrder.Maker, srcEvt.Maker)
 		// 	return
 		// }
 
-		bal, err := chain.FetchERC20Balance(m.evmClient, ethcommon.HexToAddress(quoteEntry.QuoteRequest.DstTokenAddress), dstEvt.Escrow)
-		if err != nil {
-			m.logger.Printf("Error fetching ERC20 balance: %v", err)
-			return
-		}
+		// // safetDeposit, err := chain.Fetch
 
-		if bal.String() != orderEntry.Order.LimitOrder.MakingAmount {
-			return
-		}
+		// // correct safety deposit
+		// // if srcEvt.String() != quoteEntry.Quote.SrcSafetyDeposit {
+		// // 	m.logger.Printf("src safety deposit mismatch: expected %s, got %s", quoteEntry.Quote.SrcSafetyDeposit, srcEvt.SafetyDeposit.String())
+		// // 	return
+		// // }
+
+		// bal, err := chain.FetchERC20Balance(m.evmClient, ethcommon.HexToAddress(quoteEntry.QuoteRequest.DstTokenAddress), dstEvt.Escrow)
+		// if err != nil {
+		// 	m.logger.Printf("Error fetching ERC20 balance: %v", err)
+		// 	return
+		// }
+
+		// if bal.String() != orderEntry.Order.LimitOrder.MakingAmount {
+		// 	return
+		// }
 
 		ttl := computeTTL(srcTimestamp, dstTimestamp, quoteEntry.Quote)
 		if ttl > 0 {

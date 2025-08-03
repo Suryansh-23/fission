@@ -268,7 +268,12 @@ func FetchMoveDstEscrowEvent(ctx context.Context, cli *sui.Client, txDigest stri
 			return nil, time.Time{}, fmt.Errorf("invalid id hex: %w", err)
 		}
 
-		hashlock := common.BytesToHash(ev.ParsedJson["hashlock"].([]byte))
+		tmp := ev.ParsedJson["hashlock"].([]interface{})
+		hashlockTmp := make([]byte, len(tmp))
+		for i, v := range tmp {
+			hashlockTmp[i] = byte(v.(float64))
+		}
+		hashlock := common.BytesToHash(hashlockTmp)
 		taker := models.SuiAddress(ev.ParsedJson["taker"].(string))
 
 		amount := new(big.Int)

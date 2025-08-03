@@ -80,11 +80,11 @@
     "srcEscrowFactory": "0xa7bCb4EAc8964306F9e3764f67Db6A7af6DdF99A",
     "dstEscrowFactory": "0x9947401bada3b7918ed6813946e206841e3c8cd890744056e5153c2f3015c7cf",
     "timeLocks": {
-        "srcWithdrawal": 180,
+        "srcWithdrawal": 6,
         "srcPublicWithdrawal": 612,
         "srcCancellation": 768,
         "srcPublicCancellation": 888,
-        "dstWithdrawal": 12,
+        "dstWithdrawal": 6,
         "dstPublicWithdrawal": 432,
         "dstCancellation": 552
     },
