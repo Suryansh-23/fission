@@ -91,7 +91,8 @@
     "srcSafetyDeposit": "10000000000000000",
     "dstSafetyDeposit": "10000000",
     "whitelist": [
-        "0x28af8478eb8b2dc714b5816814efc78ec1781099"
+        "0x28af8478eb8b2dc714b5816814efc78ec1781099",
+        "0x72213A915F49CA0687A8b9F3bd2FD331555f42dA"
     ],
     "recommendedPreset": "fast",
     "prices": {

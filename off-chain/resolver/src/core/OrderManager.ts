@@ -241,7 +241,7 @@ export class OrderManager {
    */
   private isEVMChain(chainId: SupportedChain): boolean {
     // Check if it's an EVM chain (not SUI which is typically 101 or similar Move-based chain)
-    return chainId !== 101; // Assuming 101 is SUI testnet/devnet
+    return chainId != 101; // Assuming 101 is SUI testnet/devnet
   }
 
   public async getClientsHealth(): Promise<{ evm: boolean; sui: boolean }> {
