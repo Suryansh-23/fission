@@ -1,308 +1,192 @@
-# Fission Relayer
+# Fission Cross-Chain Relayer
 
-**Go-based coordination service for cross-chain atomic swaps**
+A Go-based service that coordinates cross-chain atomic swaps by monitoring blockchain events, managing order lifecycles, and facilitating real-time communication between makers, takers, and resolvers in the Fission protocol.
 
-The Fission Relayer is a critical infrastructure component that orchestrates cross-chain atomic swaps by managing order distribution, resolver coordination, and secret revelation in the Fission protocol. Built in Go for high performance and reliability, it serves as the communication backbone between makers, takers, and resolvers.
+## Overview
 
-## 🎯 Core Functions
+The relayer acts as the central coordination hub for cross-chain operations, monitoring EVM and Sui blockchain events, managing order state with TTL-based storage, and broadcasting updates through WebSocket connections to connected resolvers.
 
-### Order Management
-- **Order Broadcasting**: Distributes signed orders to registered resolvers via WebSocket connections
-- **Quote Aggregation**: Collects and manages resolver bids for order fulfillment
-- **Order State Tracking**: Monitors order lifecycle from creation to completion
-
-### Resolver Coordination  
-- **Registration Management**: Handles resolver authentication and capability verification
-- **Auction Facilitation**: Coordinates Dutch auction mechanisms for optimal order matching
-- **Performance Monitoring**: Tracks resolver reliability and response times
-
-### Secret Management
-- **Security Validation**: Verifies escrow deployment safety before authorizing secret release
-- **Secret Distribution**: Broadcasts cryptographic secrets to enable atomic settlement
-- **Timing Coordination**: Ensures proper sequencing of cross-chain operations
-
-## 🏗️ Architecture
+## Architecture
 
 ```
-┌─────────────┐  REST Endpoints ┌─────────────┐
-│   Makers    │◄──────────────► │   Relayer   │
-└─────────────┘                 │             │
-                                │  - Orders   │    ┌─────────────┐
-┌─────────────┐    WebSocket    │  - Quotes   │◄──►│ Resolvers   │
-│   Takers    │◄──────────────► │  - Secrets  │    └─────────────┘
-└─────────────┘                 │             │
-                                │ Blockchain  │    ┌─────────────┐
-                                │ Monitoring  │◄──►│   Chains    │
-                                └─────────────┘    │ EVM + Sui   │
-                                                  └─────────────┘
+┌─────────────────┐     ┌─────────────────┐
+│   HTTP Server   │     │ WebSocket Server│
+│    Port 8080    │     │    Port 8081    │
+└─────────┬───────┘     └─────────┬───────┘
+          │                       │
+          └───────────┬───────────┘
+                      │
+          ┌───────────▼───────────┐
+          │       Manager         │
+          │  - TTL Maps (Orders)  │
+          │  - Broadcaster        │
+          │  - EVM Client         │
+          │  - Sui Client         │
+          └───────────────────────┘
 ```
 
-## 🚀 Getting Started
+## Core Components
+
+### Manager (`internal/manager/`)
+Central coordination service that handles:
+- **Order Storage**: TTL-based maps for quotes and orders with automatic expiration
+- **Blockchain Clients**: EVM (go-ethereum) and Sui (sui-go-sdk) connections  
+- **Event Broadcasting**: Distributes events to WebSocket connections via broadcaster
+- **RPC Health**: Monitors blockchain endpoint connectivity
+
+### HTTP API Server (`internal/api/`)
+RESTful API for order management:
+- **Quote Endpoint**: `GET /quoter/v1.0/quote/receive` - Price quote retrieval
+- **Order Submission**: `POST /relayer/v1.0/submit` - Submit cross-chain orders
+- **Secret Handling**: `POST /relayer/v1.0/submit/secret` - Secret reveal coordination
+- **Order Status**: `GET /orders/v1.0/order/status/:orderHash` - Order state queries
+- **Ready Check**: `GET /orders/v1.0/order/ready-to-accept-secret-fills/:orderHash`
+
+### WebSocket Server (`internal/ws/`)
+Real-time communication layer:
+- **Connection Management**: Handles multiple concurrent WebSocket connections
+- **Message Broadcasting**: Distributes blockchain events to connected resolvers
+- **CORS Support**: Cross-origin resource sharing for web clients
+- **Connection Registration**: Manages resolver subscriptions and message routing
+
+### Blockchain Monitoring (`internal/chain/`)
+Multi-chain event monitoring:
+- **EVM Events**: Monitors `SrcEscrowCreated` events using go-ethereum client
+- **Sui Events**: Tracks Move-based events using sui-go-sdk client
+- **Event Parsing**: Extracts order data from blockchain transaction events
+- **Time Synchronization**: Maintains accurate cross-chain timestamps
+
+## Installation
 
 ### Prerequisites
+- Go 1.23+ installed
+- Access to EVM RPC endpoint (Ethereum/Sepolia)
+- Access to Sui RPC endpoint
+- Git for version control
 
-- **Go 1.21+** for building and running the relayer
-- **Environment Variables** for blockchain RPC endpoints
-- **Network Access** to Ethereum and Sui RPC nodes
+### Setup
 
-### Environment Configuration
-
-Create a `.env` file with the following variables:
-
+1. **Clone and build**:
 ```bash
-# Server Configuration
-WS_PORT=8080
-API_PORT=8081
-
-# Blockchain RPC Endpoints
-EVM_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/your-api-key
-SUI_RPC_URL=https://fullnode.mainnet.sui.io:443
-
-# Monitoring Configuration
-LOG_LEVEL=info
-METRICS_ENABLED=true
-
-# Security Settings
-MAX_CONNECTIONS=1000
-RATE_LIMIT_PER_MINUTE=100
-```
-
-### Installation & Build
-
-```bash
-# Install dependencies
+cd off-chain/relayer
 go mod download
-
-# Build the application
-make build
-
-# Run tests
-make test
+go build -o relayer cmd/main.go
 ```
 
-## 🔧 Development
+2. **Environment configuration**:
+Set required environment variables for blockchain RPC endpoints and server ports before starting the service.
 
-### Local Development Setup
-
+3. **Run the service**:
 ```bash
-# Run with live reload (requires air)
-make watch
-
-# Manual run
-make run
-
-# Build and test
-make all
+./relayer
 ```
+
+## Configuration
+
+The relayer requires blockchain RPC endpoints for EVM and Sui networks, along with optional server port configuration. Environment variables control the service behavior including logging verbosity and connection timeouts.
+
+## API Reference
+
+### HTTP Endpoints
+
+#### Order Management
+```bash
+# Submit cross-chain order
+POST /relayer/v1.0/submit
+Content-Type: application/json
+
+{
+  "orderHash": "0x...",
+  "srcChainId": 11155111,
+  "order": { ... },
+  "signature": "0x..."
+}
+
+# Get order status
+GET /orders/v1.0/order/status/0x1234...
+
+# Check if ready for secret reveal
+GET /orders/v1.0/order/ready-to-accept-secret-fills/0x1234...
+```
+
+#### Quote System
+```bash
+# Get price quote
+GET /quoter/v1.0/quote/receive?src=ETH&dst=SUI&amount=1000000
+
+# Submit secret for order completion
+POST /relayer/v1.0/submit/secret
+Content-Type: application/json
+
+{
+  "orderHash": "0x...",
+  "secret": "0x..."
+}
+```
+
+### WebSocket API
+
+Connect to `ws://localhost:8081/` for real-time events:
+
+```javascript
+const ws = new WebSocket('ws://localhost:8081');
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  // Handle order updates, quotes, secrets
+};
+```
+
+## Blockchain Integration
+
+### EVM Chain Monitoring
+The relayer implements comprehensive EVM blockchain monitoring using the go-ethereum client library. It establishes persistent connections to Ethereum-compatible networks and monitors contract events through:
+
+- **Event Filtering**: Implements ABI-based event parsing for `SrcEscrowCreated` events from escrow factory contracts
+- **Block Synchronization**: Maintains synchronized state with the latest blockchain blocks to detect new events
+- **Transaction Analysis**: Extracts transaction data including order hashes, hashlock commitments, maker/taker addresses, and token amounts
+- **Geth Integration**: Leverages the official go-ethereum client for reliable blockchain interaction and event subscription
+- **Web3 Provider Support**: Compatible with various RPC providers including Infura, Alchemy, and custom node endpoints
+
+The EVM monitoring system uses structured event data containing order identifiers, cryptographic hashlocks for atomic swap coordination, participant addresses, and cross-chain amount specifications.
+
+### Sui Chain Monitoring  
+Sui blockchain integration utilizes the sui-go-sdk for Move-based smart contract event monitoring:
+
+- **Move Event Processing**: Parses structured events from Sui Move smart contracts using the native object model
+- **Object ID Tracking**: Monitors Sui object IDs for state changes and ownership transfers in escrow contracts
+- **RPC Client Integration**: Uses Sui's JSON-RPC interface for querying transaction events and object states
+- **Transaction Digest Analysis**: Processes transaction digests to extract escrow creation events and participant data
+- **Checkpoint Synchronization**: Maintains consistency with Sui network checkpoints for reliable event detection
+
+The Sui monitoring leverages Move's type-safe event system to capture cross-chain order data including object references, participant addresses, and token transfer amounts while maintaining compatibility with Sui's object-centric blockchain model.
+
+## Development
 
 ### Project Structure
-
 ```
 relayer/
 ├── cmd/
 │   └── main.go              # Application entry point
 ├── internal/
-│   ├── api/                 # REST API handlers
-│   │   ├── server.go
-│   │   └── routes.go
+│   ├── api/                 # HTTP API server
+│   │   ├── server.go        # HTTP server setup
+│   │   └── routes.go        # API route handlers
 │   ├── ws/                  # WebSocket server
-│   │   ├── server.go
-│   │   └── handler.go
+│   │   ├── server.go        # WebSocket server setup
+│   │   └── handler.go       # Connection handling
 │   ├── manager/             # Core business logic
-│   │   ├── manager.go       # Main coordination logic
-│   │   ├── broadcaster.go   # Message broadcasting
-│   │   ├── event.go         # Event handling
-│   │   └── types.go         # Data structures
+│   │   ├── manager.go       # Main coordination
+│   │   └── broadcaster.go   # Event broadcasting
 │   ├── chain/               # Blockchain clients
-│   │   ├── evm.go           # Ethereum client
-│   │   └── move.go          # Sui client
-│   └── hash/                # Cryptographic utilities
-│       ├── hash.go
-│       └── types.go
-├── Makefile                 # Build automation
-└── go.mod                   # Go dependencies
+│   │   ├── evm.go           # Ethereum integration
+│   │   └── move.go          # Sui integration
+│   ├── common/              # Shared utilities
+│   └── hash/                # Cryptographic functions
+├── go.mod                   # Go dependencies
+└── Makefile                 # Build automation
 ```
 
-## 📡 API Reference
+### Building
 
-### WebSocket Endpoints
-
-#### `/ws/orders` - Order Management
-```json
-// Subscribe to order updates
-{
-  "type": "subscribe",
-  "channel": "orders",
-  "filters": {
-    "chains": ["ethereum", "sui"],
-    "tokens": ["ETH", "SUI", "USDC"]
-  }
-}
-
-// Broadcast new order
-{
-  "type": "order",
-  "data": {
-    "orderHash": "0x...",
-    "maker": "0x...",
-    "srcChain": "ethereum",
-    "dstChain": "sui",
-    "srcAsset": "0x...",
-    "dstAsset": "0x...",
-    "srcAmount": "1000000000000000000",
-    "dstAmount": "2000000",
-    "signature": "0x...",
-    "expiry": 1691234567
-  }
-}
-```
-
-#### `/ws/quotes` - Resolver Bidding
-```json
-// Submit quote
-{
-  "type": "quote",
-  "orderHash": "0x...",
-  "resolver": "0x...",
-  "bid": {
-    "rate": "1.02",
-    "gasEstimate": "150000",
-    "confidence": 0.95
-  }
-}
-```
-
-#### `/ws/secrets` - Secret Distribution
-```json
-// Share secret (taker)
-{
-  "type": "secret",
-  "orderHash": "0x...",
-  "secret": "0x...",
-  "signature": "0x..."
-}
-
-// Secret broadcast (to resolvers)
-{
-  "type": "secret_reveal",
-  "orderHash": "0x...", 
-  "secret": "0x...",
-  "timestamp": 1691234567
-}
-```
-
-## 🛡️ Security Features
-
-### Connection Security
-- **Rate Limiting**: Prevents spam and DoS attacks
-- **Authentication**: Resolver identity verification
-- **Connection Limits**: Maximum concurrent connections
-
-### Data Integrity
-- **Signature Verification**: All orders and quotes must be cryptographically signed
-- **Order Validation**: Comprehensive parameter checking before broadcast
-- **Secret Timing**: Prevents premature secret revelation
-
-### Monitoring & Alerting
-- **Performance Metrics**: Connection counts, message rates, error rates
-- **Health Checks**: Endpoint availability and response times
-- **Audit Logging**: Complete audit trail of all operations
-
-## 🔍 Monitoring
-
-### Prometheus Metrics
-
-```prometheus
-# Connection metrics
-relayer_connections_total{type="websocket|rest"}
-relayer_connections_active{type="websocket|rest"}
-
-# Order metrics  
-relayer_orders_total{status="created|filled|cancelled"}
-relayer_orders_processing_time_seconds
-
-# Quote metrics
-relayer_quotes_total{resolver="address"}
-relayer_quote_response_time_seconds
-
-# Error metrics
-relayer_errors_total{type="validation|network|internal"}
-```
-
-### Logging
-
-Structured JSON logging with configurable levels:
-
-```json
-{
-  "timestamp": "2024-01-15T10:30:00Z",
-  "level": "info",
-  "component": "order_manager",
-  "order_hash": "0x...",
-  "resolver": "0x...",
-  "message": "Quote received for order",
-  "data": {
-    "rate": "1.02",
-    "gas_estimate": 150000
-  }
-}
-```
-
-## 🧪 Testing
-
-### Unit Tests
-```bash
-# Run all tests
-make test
-
-# Run specific package tests
-go test ./internal/manager -v
-
-# Run with coverage
-go test ./... -coverprofile=coverage.out
-go tool cover -html=coverage.out
-```
-
-### Integration Testing
-```bash
-# Test with local blockchain nodes
-./scripts/test-integration.sh
-
-# Load testing
-./scripts/load-test.sh
-```
-
-## 🚀 Deployment
-
-### Docker Deployment
-
-```dockerfile
-FROM golang:1.21-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go build -o relayer cmd/main.go
-
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from=builder /app/relayer .
-CMD ["./relayer"]
-```
-
-## 📊 Performance
-
-### Benchmarks
-- **Throughput**: 10,000+ orders/second
-- **Latency**: <50ms order broadcast time
-- **Memory**: ~100MB baseline usage
-- **Connections**: Support for 10,000+ concurrent WebSocket connections
-
-### Optimization Tips
-- Use connection pooling for blockchain RPC calls
-- Implement message batching for high-frequency updates
-- Enable Go's built-in race detector during development
-- Monitor goroutine counts to prevent leaks
-
----
-
-Built with ⚡ Go for high-performance cross-chain coordination
+The relayer supports standard Go build processes with optional Makefile automation for development workflows including hot reload capabilities and test execution.
