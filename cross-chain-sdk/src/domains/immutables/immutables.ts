@@ -136,6 +136,8 @@ export class Immutables<A extends AddressLike> {
      * Return keccak256 hash of instance
      */
     public hash(): string {
+        console.log('immutables encoded abi', this.toABIEncoded())
+
         return keccak256(this.toABIEncoded())
     }
 

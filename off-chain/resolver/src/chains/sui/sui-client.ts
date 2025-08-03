@@ -1,8 +1,10 @@
-import { SuiClient as SuiSdkClient } from "@mysten/sui/client";
+import { SuiEscrowExtension } from "@1inch/cross-chain-sdk";
+import { EventId, SuiClient as SuiSdkClient } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { coinWithBalance, Transaction } from "@mysten/sui/transactions";
 import { SuiConfig } from "../../config/chain";
 import { SuiCoinHelper } from "../helper/coin-sui";
+import { toHexLower, vecU8ToHex } from "../helper/event-sui";
 import { SuiImmutablesHelper } from "../helper/immutables-sui";
 import { SuiOrderHelper } from "../helper/order-sui";
 import { SuiResolverRegistry } from "../helper/resolver-registry-sui";
@@ -249,19 +251,17 @@ export class SuiClient {
   }
 
   async createSrcEscrow(
-    chainId: number,
-    order: any,
+    orderId: string,
     hashLock: any,
     signature: string,
-    fillAmount: bigint
+    fillAmount: bigint,
+    exts: SuiEscrowExtension
   ): Promise<{ txHash: string; blockHash: string }> {
     try {
       console.log(
         "Creating source escrow on Sui chain using resolver contract"
       );
 
-      // Extract order details
-      const orderId = order.orderId || order.id;
       if (!orderId) {
         throw new Error("Order ID is required for source escrow creation");
       }
@@ -277,8 +277,7 @@ export class SuiClient {
 
       // Set up timelocks
       const now = this.immutablesHelper.getCurrentTimestamp();
-      const hour = BigInt(60 * 60 * 1000);
-      const day = BigInt(24) * hour;
+      const seconds = BigInt(1000);
 
       // Handle both single fill and multiple fill scenarios
       let hashlockInfo: Uint8Array;
@@ -286,45 +285,49 @@ export class SuiClient {
       let secretIndex: number = 0;
       let proof: Uint8Array[] = [];
 
-      if (hashLock.isMultipleFills && hashLock.isMultipleFills()) {
-        // Multiple fills scenario
-        console.log("Handling multiple fills scenario");
+      // if (hashLock.isMultipleFills && hashLock.isMultipleFills()) {
+      //   // Multiple fills scenario
+      //   console.log("Handling multiple fills scenario");
 
-        // For multiple fills, use the hashlock info directly
-        hashlockInfo = new Uint8Array(hashLock.toBuffer());
+      //   // For multiple fills, use the hashlock info directly
+      //   hashlockInfo = new Uint8Array(hashLock.toBuffer());
 
-        // For multiple fills, we need the specific secret hash for this resolver
-        // This should be provided in the hashLock object
-        if (hashLock.secretHash) {
-          secretHash = new Uint8Array(hashLock.secretHash);
-        } else {
-          throw new Error("Secret hash required for multiple fills");
-        }
+      //   // For multiple fills, we need the specific secret hash for this resolver
+      //   // This should be provided in the hashLock object
+      //   if (hashLock.secretHash) {
+      //     secretHash = new Uint8Array(hashLock.secretHash);
+      //   } else {
+      //     throw new Error("Secret hash required for multiple fills");
+      //   }
 
-        // Get secret index and proof if available
-        if (hashLock.secretIndex !== undefined) {
-          secretIndex = hashLock.secretIndex;
-        }
+      //   // Get secret index and proof if available
+      //   if (hashLock.secretIndex !== undefined) {
+      //     secretIndex = hashLock.secretIndex;
+      //   }
 
-        if (hashLock.proof && Array.isArray(hashLock.proof)) {
-          proof = hashLock.proof.map((p: any) => new Uint8Array(p));
-        }
-      } else {
-        // Single fill scenario
-        console.log("Handling single fill scenario");
+      //   if (hashLock.proof && Array.isArray(hashLock.proof)) {
+      //     proof = hashLock.proof.map((p: any) => new Uint8Array(p));
+      //   }
+      // } else {
+      // Single fill scenario
+      console.log("Handling single fill scenario");
 
-        // For single fill, the hashlock info is the secret hash itself
-        const secretHashBytes = hashLock.secretHash || hashLock.toBuffer();
-        hashlockInfo = new Uint8Array(secretHashBytes);
-        secretHash = new Uint8Array(secretHashBytes);
-        secretIndex = 0;
-        proof = []; // No proof needed for single fill
-      }
+      // For single fill, the hashlock info is the secret hash itself
+      const secretHashBytes = hashLock.secretHash || hashLock.toBuffer();
+      hashlockInfo = new Uint8Array(secretHashBytes);
+      secretHash = new Uint8Array(secretHashBytes);
+      secretIndex = 0;
+      proof = []; // No proof needed for single fill
+
+      const coinType = await this.resolveCoinTypeFromPkg(
+        exts.maker.toHex(),
+        exts.makerAsset.toHex()
+      );
 
       const result = await this.deploySrcEscrow(
         orderId,
         fillAmount,
-        BigInt(1000000), // 0.001 SUI safety deposit
+        BigInt(exts.srcSafetyDeposit), // 0.001 SUI safety deposit
         signatureBytes,
         publicKeyBytes,
         0, // Ed25519 scheme
@@ -332,11 +335,11 @@ export class SuiClient {
         secretHash,
         secretIndex,
         proof,
-        order.coinType || "0x2::sui::SUI",
-        now + hour, // 1 hour for private withdrawal
-        now + 2n * hour, // 2 hours for public withdrawal
-        now + day, // 1 day for private cancellation
-        now + 2n * day // 2 days for public cancellation
+        coinType,
+        now + 6n * seconds,
+        now + 612n * seconds,
+        now + 768n * seconds,
+        now + 888n * seconds
       );
 
       return {
@@ -838,6 +841,58 @@ export class SuiClient {
       console.error("Error getting escrow info:", error);
       return null;
     }
+  }
+
+  async fetchOrderCreatedEventByOrderHash({
+    packageId,
+    orderHashHex,
+    module = "order",
+    eventStruct = "OrderCreated",
+    limit = 200,
+  }: {
+    packageId: string; // e.g. "0xabc..."
+    orderHashHex: `0x${string}`; // 32-byte order hash in 0x-hex
+    module?: string; // default: "order"
+    eventStruct?: string; // default: "OrderCreated"
+    limit?: number; // page size, default 200
+  }): Promise<string | null> {
+    const eventType = `${packageId}::${module}::${eventStruct}`;
+    const target = toHexLower(orderHashHex);
+
+    console.log(
+      `Fetching events of type ${eventType} for order hash ${target}`
+    );
+
+    let cursor: EventId | null = null;
+
+    for (;;) {
+      const page = await this.client.queryEvents({
+        query: { MoveEventType: eventType },
+        order: "descending",
+        limit,
+        cursor,
+      });
+
+      for (const ev of page.data) {
+        const pj = ev.parsedJson as any;
+        if (!pj) continue;
+        const evHash = vecU8ToHex(pj.order_hash);
+        if (evHash && evHash === target) {
+          // id is the Move `ID` field from your event payload
+          const orderId: string =
+            typeof pj.id === "string"
+              ? pj.id
+              : pj.id?.id ?? pj.id?.object ?? pj.id;
+
+          console.log(`Found matching event for order ${orderId}:`, ev);
+          return orderId;
+        }
+      }
+
+      if (!page.hasNextPage) break;
+      cursor = page.nextCursor ?? null;
+    }
+    return null;
   }
 
   /**

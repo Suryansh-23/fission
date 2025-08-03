@@ -1,5 +1,5 @@
-import {bcs, fromHex, toHex} from '@mysten/bcs'
-import bigInt, {BigInteger} from 'big-integer'
+import { bcs, fromHex, toHex } from '@mysten/bcs'
+import bigInt, { BigInteger } from 'big-integer'
 
 const zero = bigInt(0)
 const n256 = bigInt(256)
@@ -28,12 +28,12 @@ export const toBigEndian = (bigNumber: BigInteger): Uint8Array => {
 
 export const MoveAddress = bcs.byteVector().transform({
     // To change the input type, you need to provide a type definition for the input
-    input: (val: string) => toBigEndian(bigInt(val.slice(2), 16)),
+    input: (val: string) => fromHex(val),
     output: (val: Uint8Array) => '0x' + toHex(val)
 })
 
 export const EvmAddress = bcs.byteVector().transform({
     // To change the input type, you need to provide a type definition for the input
     input: (val: string) => fromHex(val),
-    output: (val) => toHex(val)
+    output: (val) => toHex(new Uint8Array(val))
 })

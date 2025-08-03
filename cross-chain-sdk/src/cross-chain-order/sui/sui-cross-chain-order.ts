@@ -1,8 +1,7 @@
 import {AuctionCalculator, randBigInt} from '@1inch/fusion-sdk'
-import {bcs} from '@mysten/bcs'
+import {bcs, fromHex} from '@mysten/bcs'
 import assert from 'assert'
 import bigInt from 'big-integer'
-import {EvmAddress, MoveAddress, toBigEndian} from '../utils'
 import {keccak256} from 'ethers'
 import {isSupportedChain, NetworkEnum, SupportedChain} from '../../chains'
 import {AddressLike, SuiAddress} from '../../domains/addresses'
@@ -12,6 +11,8 @@ import {assertUInteger} from '../../utils'
 import {now} from '../../utils/time'
 import {BaseOrder} from '../base-order'
 import {injectTrackCode} from '../source-track'
+import {EvmAddress, MoveAddress, toBigEndian} from '../utils'
+import {SuiEscrowExtension} from './escrow-extension'
 import {
     SuiDetails,
     SuiEscrowParams,
@@ -51,19 +52,18 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
     }
 
     private readonly details: SuiDetails
-    private readonly escrowParams: SuiEscrowParams
+    private readonly _escrowExtension: SuiEscrowExtension
 
     private constructor(
-        orderInfo: SuiOrderInfoData,
-        escrowParams: SuiEscrowParams,
+        escrowExtension: SuiEscrowExtension,
         details: SuiDetails,
         extra: SuiExtra = {}
     ) {
         super()
 
         assert(
-            isSupportedChain(escrowParams.dstChainId),
-            `dst chain ${escrowParams.dstChainId} is not supported`
+            isSupportedChain(escrowExtension.dstChainId),
+            `dst chain ${escrowExtension.dstChainId} is not supported`
         )
 
         const mergedExtra = {
@@ -77,14 +77,14 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
             BigInt(mergedExtra.orderExpirationDelay || 0)
 
         this.orderConfig = {
-            srcToken: orderInfo.makerAsset,
-            dstToken: orderInfo.takerAsset,
-            maker: orderInfo.maker,
-            receiver: orderInfo.receiver || orderInfo.takerAsset, // Use takerAsset as receiver if not provided
-            srcAmount: orderInfo.makingAmount,
-            minDstAmount: orderInfo.takingAmount,
+            srcToken: escrowExtension.makerAsset,
+            dstToken: escrowExtension.takerAsset,
+            maker: escrowExtension.maker,
+            receiver: escrowExtension.receiver,
+            srcAmount: escrowExtension.makingAmount,
+            minDstAmount: escrowExtension.takingAmount,
             deadline,
-            salt: orderInfo.salt || randBigInt(2n ** 64n - 1n),
+            salt: escrowExtension.salt,
             allowMultipleFills: mergedExtra.allowMultipleFills,
             allowPartialFills: mergedExtra.allowPartialFills,
             orderExpirationDelay: mergedExtra.orderExpirationDelay,
@@ -94,8 +94,10 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
             sponsor: extra.sponsor
         }
 
+        console.log('orderConfig receiver:', this.orderConfig.receiver)
+
         this.details = details
-        this.escrowParams = escrowParams
+        this._escrowExtension = escrowExtension
 
         // Validations
         assertUInteger(this.orderConfig.srcAmount, 2n ** 64n - 1n)
@@ -110,27 +112,57 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
         details: SuiDetails,
         extra: SuiExtra = {}
     ): SuiCrossChainOrder {
-        return new SuiCrossChainOrder(orderInfo, escrowParams, details, extra)
+        // Create the escrow extension from the provided parameters
+        const escrowExtension = new SuiEscrowExtension(
+            orderInfo.makerAsset,
+            orderInfo.takerAsset,
+            orderInfo.makingAmount,
+            orderInfo.takingAmount,
+            orderInfo.maker,
+            orderInfo.receiver!, // Use takerAsset as receiver if not provided
+            details.auction,
+            escrowParams.hashLock,
+            escrowParams.dstChainId,
+            orderInfo.takerAsset, // dstToken is same as takerAsset
+            escrowParams.srcSafetyDeposit,
+            escrowParams.dstSafetyDeposit,
+            escrowParams.timeLocks,
+            orderInfo.salt || 0n
+        )
+
+        return new SuiCrossChainOrder(escrowExtension, details, extra)
+    }
+
+    static fromEscrowExtension(
+        escrowExtension: SuiEscrowExtension,
+        details: SuiDetails,
+        extra: SuiExtra = {}
+    ): SuiCrossChainOrder {
+        return new SuiCrossChainOrder(escrowExtension, details, extra)
+    }
+
+    get escrowExtension(): SuiEscrowExtension {
+        return this._escrowExtension
     }
 
     public get hashLock(): HashLock {
-        return this.escrowParams.hashLock
+        return this.escrowExtension.hashLockInfo
     }
 
     public get timeLocks(): TimeLocks {
-        return this.escrowParams.timeLocks
+        return this.escrowExtension.timeLocks
     }
 
     public get srcSafetyDeposit(): bigint {
-        return this.escrowParams.srcSafetyDeposit
+        return this.escrowExtension.srcSafetyDeposit
     }
 
     public get dstSafetyDeposit(): bigint {
-        return this.escrowParams.dstSafetyDeposit
+        return this.escrowExtension.dstSafetyDeposit
     }
 
     public get dstChainId(): SupportedChain {
-        return this.escrowParams.dstChainId
+        return this.escrowExtension.dstChainId
     }
 
     public get maker(): SuiAddress {
@@ -221,10 +253,12 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
         const srcamt = bcs.u64().serialize(this.orderConfig.srcAmount)
         const dstamt = bcs.u64().serialize(this.orderConfig.minDstAmount)
 
-        console.log('salt', toBigEndian(bigInt(this.orderConfig.salt)))
         console.log(
-            'maker',
-            toBigEndian(bigInt(this.orderConfig.maker.toString().slice(2), 16))
+            'salt',
+            bcs
+                .byteVector()
+                .serialize(fromHex(this.orderConfig.salt.toString()))
+                .toBytes()
         )
         console.log(
             'maker',
@@ -237,7 +271,7 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
         console.log('srcamt', srcamt.toBytes(), 'dstamt', dstamt.toBytes())
 
         const orderHashData = orderHashDataStruct.serialize({
-            salt: toBigEndian(bigInt(this.orderConfig.salt)),
+            salt: fromHex(this.orderConfig.salt.toString()),
             maker: this.orderConfig.maker.toString(),
             receiver: this.orderConfig.receiver.toString(),
             makingAmount: this.orderConfig.srcAmount,
@@ -271,12 +305,14 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
                 makerTraits: 0n.toString()
             },
             escrowParams: {
-                hashLock: this.escrowParams.hashLock.toString(),
+                hashLock: this.escrowExtension.hashLockInfo.toString(),
                 srcChainId: NetworkEnum.SUI,
-                dstChainId: this.escrowParams.dstChainId,
-                srcSafetyDeposit: this.escrowParams.srcSafetyDeposit.toString(),
-                dstSafetyDeposit: this.escrowParams.dstSafetyDeposit.toString(),
-                timeLocks: this.escrowParams.timeLocks.toString()
+                dstChainId: this.escrowExtension.dstChainId,
+                srcSafetyDeposit:
+                    this.escrowExtension.srcSafetyDeposit.toString(),
+                dstSafetyDeposit:
+                    this.escrowExtension.dstSafetyDeposit.toString(),
+                timeLocks: this.escrowExtension.timeLocks.toString()
             },
             details: {
                 auction: {
@@ -378,11 +414,11 @@ export class SuiCrossChainOrder extends BaseOrder<SuiAddress, SuiOrderJSON> {
                 this.orderConfig.receiver.toString(),
                 this.orderConfig.minDstAmount.toString(),
                 this.orderConfig.deadline.toString(),
-                this.escrowParams.hashLock.toBuffer(),
-                this.escrowParams.timeLocks.toString(),
-                this.escrowParams.srcSafetyDeposit.toString(),
-                this.escrowParams.dstSafetyDeposit.toString(),
-                this.escrowParams.dstChainId
+                this.escrowExtension.hashLockInfo.toBuffer(),
+                this.escrowExtension.timeLocks.toString(),
+                this.escrowExtension.srcSafetyDeposit.toString(),
+                this.escrowExtension.dstSafetyDeposit.toString(),
+                this.escrowExtension.dstChainId
             ],
             typeArguments: [this.orderConfig.srcToken.toTypeArg()]
         }

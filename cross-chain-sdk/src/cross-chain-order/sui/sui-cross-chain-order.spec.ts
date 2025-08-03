@@ -106,7 +106,7 @@ describe('SuiCrossChainOrder', () => {
         const hash = order.getOrderHash(NetworkEnum.SUI)
 
         expect(typeof hash).toBe('string')
-        expect(hash.length).toBe(64) // 32 bytes as hex string
+        expect(hash.length).toBe(66) // 32 bytes as hex string with 0x prefix
     })
 
     it('should serialize to JSON', () => {

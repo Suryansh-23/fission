@@ -1,5 +1,6 @@
 import {
   AmountMode,
+  AuctionDetails,
   DstImmutablesComplement,
   ESCROW_DST_IMPLEMENTATION,
   ESCROW_FACTORY,
@@ -8,14 +9,13 @@ import {
   EvmEscrowFactory,
   EvmEscrowFactoryFacade,
   Extension as EvmExtension,
-  SuiEscrowExtension,
   HashLock,
   RelayerRequestParams,
   SuiAddress,
+  SuiCrossChainOrder,
+  SuiEscrowExtension,
   SupportedChain,
   TakerTraits,
-  SuiCrossChainOrder,
-  AuctionDetails,
 } from "@1inch/cross-chain-sdk";
 import { EVMClient } from "../chains/evm/evm-client";
 import { SuiClient } from "../chains/sui/sui-client";
@@ -184,7 +184,7 @@ export class OrderManager {
         BigInt(relayerParams.order.makingAmount),
         BigInt(relayerParams.order.takingAmount),
         SuiAddress.fromString(relayerParams.order.maker),
-        SuiAddress.fromString(relayerParams.order.receiver),
+        EvmAddress.fromString(relayerParams.order.receiver),
         auctionDetails,
         extension.hashLock,
         extension.dstChainId,
@@ -557,18 +557,21 @@ export class OrderManager {
         }
 
         // Create a minimal order object for Sui deployment
-        const suiOrder = {
-          orderId: crossChainOrder.getOrderHash(srcChainId), // Use order hash as ID for now
-          id: crossChainOrder.getOrderHash(srcChainId),
-          coinType: "0x2::sui::SUI", // Default to SUI, should be derived from crossChainOrder.makerAsset
-        };
+        const orderId =
+          (await this.suiClient.fetchOrderCreatedEventByOrderHash({
+            packageId: process.env.SUI_ESCROW_FACTORY!,
+            orderHashHex: orderHash as `0x${string}`,
+          })) || "";
+        console.log("Sui order id for created order:", orderId);
+
+        const exts = crossChainOrder.escrowExtension;
 
         srcResult = await this.suiClient.createSrcEscrow(
-          srcChainId,
-          suiOrder,
+          orderId,
           hashLock,
           signature,
-          fillAmount
+          fillAmount,
+          exts
         );
 
         storedOrder.srcBlockHash = srcResult.blockHash;

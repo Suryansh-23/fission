@@ -35,7 +35,7 @@ import {
     ReadyToExecutePublicActions,
     QuoterRequestParams
 } from '../api'
-import {SuiOrderJSON} from '../cross-chain-order/sui'
+import {SuiCrossChainOrder, SuiOrderJSON} from '../cross-chain-order/sui'
 import {NetworkEnum, SupportedChain} from '../chains'
 
 export class SDK {
@@ -236,6 +236,7 @@ export class SDK {
 
             // For Sui orders, we need to handle differently
             // The order should be a SuiCrossChainOrder
+            const suiOrder = order as unknown as SuiCrossChainOrder
             const orderJSON = order.toJSON() as SuiOrderJSON
 
             const relayerRequest = new RelayerRequest({
@@ -243,7 +244,7 @@ export class SDK {
                 order: orderJSON.orderInfo,
                 signature,
                 quoteId,
-                extension: '', // Sui doesn't use extension in the same way
+                extension: suiOrder.escrowExtension.encodeToHex(),
                 secretHashes: secretHashes,
                 makerPubKey: makerPubKey
             })
@@ -255,7 +256,7 @@ export class SDK {
                 signature,
                 quoteId,
                 orderHash: order.getOrderHash(srcChainId),
-                extension: ''
+                extension: relayerRequest.extension
             }
         } else {
             // EVM order handling

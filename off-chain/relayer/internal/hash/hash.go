@@ -84,11 +84,8 @@ func GetOrderHashForLimitOrder(chainID common.ChainID, order common.LimitOrder) 
 		bcsEncoder := mystenbcs.NewEncoder(&bcsEncodedOrder)
 
 		// salt big.Int from string
-		saltBigInt, ok := new(big.Int).SetString(order.Salt, 10)
-		if !ok {
-			return ethcommon.Hash{}, fmt.Errorf("invalid salt value: %v", order.Salt)
-		}
-		fmt.Println("Salt value:", saltBigInt.Bytes())
+		saltBytes := ethcommon.Hex2Bytes(order.Salt)
+		fmt.Println("Salt value:", saltBytes)
 
 		// hex to bytes for Maker address
 		makerBytes := ethcommon.Hex2Bytes(strings.TrimPrefix(order.Maker, "0x"))
@@ -114,7 +111,7 @@ func GetOrderHashForLimitOrder(chainID common.ChainID, order common.LimitOrder) 
 		fmt.Println("Taking amount:", takingAmountUint64)
 
 		if err := bcsEncoder.Encode(OrderHashType{
-			Salt:         saltBigInt.Bytes(),
+			Salt:         saltBytes,
 			Maker:        makerBytes,
 			Receiver:     receiverBytes.Bytes(),
 			MakingAmount: makingAmountUint64,

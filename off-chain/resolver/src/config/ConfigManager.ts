@@ -2,10 +2,10 @@ import * as dotenv from "dotenv";
 
 const envFile = process.env.RESOLVER_ID;
 console.log(
-  `Loading environment variables from .env${envFile ? `.${envFile}` : ""}`
+  `Loading environment variables from .env${envFile ? `.${envFile}` : ".env.1"}`
 );
 // Load environment variables from .env file
-dotenv.config({ path: envFile ? `.env.${envFile}` : ".env" });
+dotenv.config({ path: envFile ? `.env.${envFile}` : ".env.1" });
 
 export interface ResolverConfig {
   // WebSocket Configuration
