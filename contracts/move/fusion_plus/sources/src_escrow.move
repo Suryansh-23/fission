@@ -94,14 +94,14 @@ public fun new_merkle_proof_data(
 }
 
 #[allow(lint(coin_field))]
-public struct SrcEscrow<phantom T: store> has key {
+public struct SrcEscrow<phantom T> has key {
     id: UID,
     immutables: Immutables,
     deposit: Coin<T>,
     safety_deposit: Coin<SUI>,
 }
 
-public fun create_new<T: store>(
+public fun create_new<T>(
     clock: &Clock,
     merkle_data: MerkleProofData,
     order: &mut Order<T>,
@@ -223,7 +223,7 @@ public fun create_new<T: store>(
 }
 
 /// Withdraw to specific address function for taker during private withdrawal period
-public fun withdraw_to<T: store>(
+public fun withdraw_to<T>(
     clock: &Clock,
     escrow: &mut SrcEscrow<T>,
     secret: vector<u8>,
@@ -242,7 +242,7 @@ public fun withdraw_to<T: store>(
     withdraw_to_internal(escrow, secret, target, ctx);
 }
 
-public fun public_withdraw<T: store>(
+public fun public_withdraw<T>(
     clock: &Clock,
     escrow: &mut SrcEscrow<T>,
     secret: vector<u8>,
@@ -264,7 +264,7 @@ public fun public_withdraw<T: store>(
 
 /// Cancel function for taker during private cancellation period
 #[allow(lint(self_transfer))]
-public fun cancel<T: store>(
+public fun cancel<T>(
     clock: &Clock,
     escrow: &mut SrcEscrow<T>,
     ctx: &mut TxContext,
@@ -285,7 +285,7 @@ public fun cancel<T: store>(
 
 /// Public cancel function during public cancellation period (anyone can call)
 #[allow(lint(self_transfer))]
-public fun public_cancel<T: store>(
+public fun public_cancel<T>(
     clock: &Clock,
     escrow: &mut SrcEscrow<T>,
     ctx: &mut TxContext,
@@ -302,7 +302,7 @@ public fun public_cancel<T: store>(
 
 /// Rescue function - allows recovery of funds after rescue delay period
 /// Can be called by anyone after the rescue delay has passed since deployment
-public fun rescue<T: store>(
+public fun rescue<T>(
     clock: &Clock,
     escrow: &mut SrcEscrow<T>,
     ctx: &mut TxContext,
@@ -320,7 +320,7 @@ public fun rescue<T: store>(
 
 /// Internal function to handle withdrawal logic
 #[allow(lint(self_transfer))]
-fun withdraw_to_internal<T: store>(
+fun withdraw_to_internal<T>(
     escrow: &mut SrcEscrow<T>,
     secret: vector<u8>,
     target: address,
@@ -344,7 +344,7 @@ fun withdraw_to_internal<T: store>(
 }
 
 /// Internal function to handle cancellation logic
-fun cancel_internal<T: store>(escrow: &mut SrcEscrow<T>, ctx: &mut TxContext): Coin<SUI> {
+fun cancel_internal<T>(escrow: &mut SrcEscrow<T>, ctx: &mut TxContext): Coin<SUI> {
     let maker_address = immutables::get_maker(&escrow.immutables);
 
     let deposit_amount = coin::value(&escrow.deposit);
@@ -430,7 +430,7 @@ fun extract_merkle_root_shortened(hashlock_info: &vector<u8>): vector<u8> {
 #[test_only]
 /// Test-only version of create_new that bypasses signature verification
 /// This allows for easier testing without requiring valid cryptographic signatures
-public fun create_new_for_testing<T: store>(
+public fun create_new_for_testing<T>(
     clock: &Clock,
     merkle_data: MerkleProofData,
     order: &mut Order<T>,

@@ -34,14 +34,14 @@ public struct DstEscrowCancelledEvent has copy, drop {
 }
 
 #[allow(lint(coin_field))]
-public struct DstEscrow<phantom T: store> has key {
+public struct DstEscrow<phantom T> has key {
     id: UID,
     immutables: Immutables,
     deposit: Coin<T>,
     safety_deposit: Coin<SUI>,
 }
 
-public fun create_new<T: store>(
+public fun create_new<T>(
     clock: &Clock,
     immutables: Immutables,
     src_cancellation_timestamp: u64,
@@ -95,7 +95,7 @@ public fun create_new<T: store>(
     transfer::share_object(escrow);
 }
 
-public fun withdraw<T: store>(
+public fun withdraw<T>(
     clock: &Clock,
     escrow: &mut DstEscrow<T>,
     secret: vector<u8>,
@@ -115,7 +115,7 @@ public fun withdraw<T: store>(
 }
 
 // Public withdrawal function - allows withdrawal during public period with access token
-public fun public_withdraw<T: store>(
+public fun public_withdraw<T>(
     clock: &Clock,
     escrow: &mut DstEscrow<T>,
     secret: vector<u8>,
@@ -131,7 +131,7 @@ public fun public_withdraw<T: store>(
     withdraw_internal(escrow, secret, ctx)
 }
 
-fun withdraw_internal<T: store>(
+fun withdraw_internal<T>(
     escrow: &mut DstEscrow<T>,
     secret: vector<u8>,
     ctx: &mut TxContext,
@@ -157,7 +157,7 @@ fun withdraw_internal<T: store>(
     safety_deposit
 }
 
-public fun cancel<T: store>(
+public fun cancel<T>(
     clock: &Clock,
     escrow: &mut DstEscrow<T>,
     ctx: &mut TxContext,

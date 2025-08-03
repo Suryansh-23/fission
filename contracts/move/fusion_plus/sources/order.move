@@ -12,7 +12,7 @@ const EUnauthorizedAccess: u64 = 1;
 
 // Order structure that holds maker's funds
 #[allow(lint(coin_field))]
-public struct Order<phantom T: store> has key {
+public struct Order<phantom T> has key {
     id: UID,
     maker: address,
     receiver: vector<u8>,
@@ -50,7 +50,7 @@ public struct OrderCreated has copy, drop {
 fun init(_ctx: &mut TxContext) {}
 
 // Function to create order object (maker calls this to deposit coins)
-public entry fun create_order<T: store>(
+public entry fun create_order<T>(
     receiver: vector<u8>, // this will be an EVM address (20 bytes)
     making_amount: u64,
     taking_amount: u64,
@@ -114,7 +114,7 @@ public entry fun create_order<T: store>(
 }
 
 // Function to split coins from order for escrow (package-only access)
-public(package) fun split_coins<T: store>(
+public(package) fun split_coins<T>(
     order: &mut Order<T>,
     amount: u64,
     ctx: &mut TxContext,
@@ -127,7 +127,7 @@ public(package) fun split_coins<T: store>(
 }
 
 /// Function for maker to withdraw all remaining tokens from their order
-public fun withdraw<T: store>(order: &mut Order<T>, ctx: &mut TxContext): Coin<T> {
+public fun withdraw<T>(order: &mut Order<T>, ctx: &mut TxContext): Coin<T> {
     assert!(ctx.sender() == order.maker, EUnauthorizedAccess);
 
     let remaining_amount = coin::value(&order.remaining_coins);
@@ -137,46 +137,46 @@ public fun withdraw<T: store>(order: &mut Order<T>, ctx: &mut TxContext): Coin<T
 }
 
 // Getter functions for order fields
-public fun get_maker<T: store>(order: &Order<T>): address {
+public fun get_maker<T>(order: &Order<T>): address {
     order.maker
 }
 
-public fun get_receiver<T: store>(order: &Order<T>): vector<u8> {
+public fun get_receiver<T>(order: &Order<T>): vector<u8> {
     order.receiver
 }
 
-public fun get_order_hash<T: store>(order: &Order<T>): vector<u8> {
+public fun get_order_hash<T>(order: &Order<T>): vector<u8> {
     order.order_hash
 }
 
-public fun get_making_amount<T: store>(order: &Order<T>): u64 {
+public fun get_making_amount<T>(order: &Order<T>): u64 {
     order.making_amount
 }
 
-public fun get_taking_amount<T: store>(order: &Order<T>): u64 {
+public fun get_taking_amount<T>(order: &Order<T>): u64 {
     order.taking_amount
 }
 
-public fun get_remaining_amount<T: store>(order: &Order<T>): u64 {
+public fun get_remaining_amount<T>(order: &Order<T>): u64 {
     coin::value(&order.remaining_coins)
 }
 
-public fun get_filled_amount<T: store>(order: &Order<T>): u64 {
+public fun get_filled_amount<T>(order: &Order<T>): u64 {
     order.filled_amount
 }
 
-public fun is_partial_fill_allowed<T: store>(order: &Order<T>): bool {
+public fun is_partial_fill_allowed<T>(order: &Order<T>): bool {
     order.is_partial_fill_allowed
 }
 
-public fun is_multiple_fills_allowed<T: store>(order: &Order<T>): bool {
+public fun is_multiple_fills_allowed<T>(order: &Order<T>): bool {
     order.is_multiple_fills_allowed
 }
 
-public fun is_order_active<T: store>(order: &Order<T>): bool {
+public fun is_order_active<T>(order: &Order<T>): bool {
     coin::value(&order.remaining_coins) > 0
 }
 
-public fun get_auction_details<T: store>(order: &Order<T>): AuctionDetails {
+public fun get_auction_details<T>(order: &Order<T>): AuctionDetails {
     order.auction_details
 }

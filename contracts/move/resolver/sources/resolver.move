@@ -21,7 +21,7 @@ fun init(ctx: &mut TxContext) {
     transfer::transfer(cap, tx_context::sender(ctx));
 }
 
-public entry fun create_src_escrow<T: store>(
+public entry fun create_src_escrow<T>(
     clock: &Clock,
     _cap: &ResolverCap,
     order: &mut Order<T>,
@@ -73,7 +73,7 @@ public entry fun create_src_escrow<T: store>(
     );
 }
 
-public entry fun create_dst_escrow<T: store>(
+public entry fun create_dst_escrow<T>(
     clock: &Clock,
     _cap: &ResolverCap,
     order_hash: vector<u8>,
@@ -120,7 +120,7 @@ public entry fun create_dst_escrow<T: store>(
 }
 
 // Main entry point for withdrawing from source escrows
-public entry fun withdraw_src<T: store>(
+public entry fun withdraw_src<T>(
     clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut SrcEscrow<T>,
@@ -132,7 +132,7 @@ public entry fun withdraw_src<T: store>(
 }
 
 // Main entry point for withdrawing from destination escrows
-public entry fun withdraw_dst<T: store>(
+public entry fun withdraw_dst<T>(
     clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut DstEscrow<T>,
@@ -145,7 +145,7 @@ public entry fun withdraw_dst<T: store>(
 }
 
 // Main entry point for public withdrawal from source escrows
-public entry fun public_withdraw_src<T: store>(
+public entry fun public_withdraw_src<T>(
     clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut SrcEscrow<T>,
@@ -156,7 +156,7 @@ public entry fun public_withdraw_src<T: store>(
 }
 
 // Main entry point for public withdrawal from destination escrows
-public entry fun public_withdraw_dst<T: store>(
+public entry fun public_withdraw_dst<T>(
     clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut DstEscrow<T>,
@@ -168,7 +168,7 @@ public entry fun public_withdraw_dst<T: store>(
 }
 
 // Main entry point for canceling source escrows
-public entry fun cancel_src<T: store>(
+public entry fun cancel_src<T>(
     clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut SrcEscrow<T>,
@@ -179,7 +179,7 @@ public entry fun cancel_src<T: store>(
 }
 
 // Main entry point for canceling destination escrows
-public entry fun cancel_dst<T: store>(
+public entry fun cancel_dst<T>(
     clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut DstEscrow<T>,
@@ -190,7 +190,7 @@ public entry fun cancel_dst<T: store>(
 }
 
 // Main entry point for public canceling source escrows
-public entry fun public_cancel_src<T: store>(
+public entry fun public_cancel_src<T>(
     clock: &Clock,
     _cap: &ResolverCap,
     escrow: &mut SrcEscrow<T>,

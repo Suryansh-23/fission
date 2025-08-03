@@ -20,7 +20,7 @@ fusion_plus = { local = "../fusion_plus" }
 
 [addresses]
 resolver = "0x0"
-fusion_plus = "0x0"
+fusion_plus = "0xaec8ea54e448085f0113120b91b43ac5da13a193e712c2e50a22cda8ad9cf919"
 
 # Named addresses will be accessible in Move as `@name`. They're also exported:
 # for example, `std = "0x1"` is exported by the Standard Library.
