@@ -7,28 +7,48 @@ import {
   EvmCrossChainOrder,
   EvmEscrowFactory,
   EvmEscrowFactoryFacade,
-  Extension,
+  Extension as EvmExtension,
+  SuiEscrowExtension,
   HashLock,
   RelayerRequestParams,
   SuiAddress,
   SupportedChain,
   TakerTraits,
+  SuiCrossChainOrder,
+  AuctionDetails,
 } from "@1inch/cross-chain-sdk";
 import { EVMClient } from "../chains/evm/evm-client";
 import { SuiClient } from "../chains/sui/sui-client";
 import { ResolverWebSocketClient } from "../communication/ws";
+
+// Type guards
+function isEvmCrossChainOrder(
+  order: EvmCrossChainOrder | SuiCrossChainOrder
+): order is EvmCrossChainOrder {
+  return "extension" in order;
+}
+
+function isSuiCrossChainOrder(
+  order: EvmCrossChainOrder | SuiCrossChainOrder
+): order is SuiCrossChainOrder {
+  return "escrowExtension" in order;
+}
 
 // Order data stored in the mapping - includes original params + converted order + runtime data
 interface StoredOrderData {
   // Original params from relayer
   originalParams: RelayerRequestParams;
   // Converted cross-chain order from SDK
-  crossChainOrder: EvmCrossChainOrder;
+  crossChainOrder: EvmCrossChainOrder | SuiCrossChainOrder;
   // Runtime data for cross-chain execution
   srcComplement?: any;
   dstDeployedAt?: bigint;
   isPartialFill?: boolean;
   // Sui escrow IDs for object-based tracking
+
+  srcBlockHash?: string;
+  dstBlockHash?: string;
+
   srcEscrowId?: string;
   dstEscrow?: {
     id: string;
@@ -85,57 +105,135 @@ export class OrderManager {
   public async registerOrder(
     relayerParams: RelayerRequestParams
   ): Promise<void> {
-    console.log("Registering order from RelayerRequestParams");
-    // @note order stored for this resolver needs to compute this - hash lock will be the secretHash[resolverId + 1], if this is an array then store variable in stored order that partial fills is true.
-    // Decode the extension from the relayer params
-    const extension = Extension.decode(relayerParams.extension);
-    console.log("Decoded extension:", extension);
-
-    // Convert RelayerRequestParams to EvmCrossChainOrder using SDK method
-    const crossChainOrder = EvmCrossChainOrder.fromDataAndExtension(
-      {
-        ...relayerParams.order,
-        receiver: SuiAddress.fromString(relayerParams.order.receiver)
-          .splitToParts()[1]
-          .toHex(),
-        takerAsset: SuiAddress.fromString(relayerParams.order.takerAsset)
-          .splitToParts()[1]
-          .toHex(),
-      },
-      extension
-    );
-    const orderHash = crossChainOrder.getOrderHash(relayerParams.srcChainId);
-
-    // Store all the data we need for execution
-    const storedOrderData: StoredOrderData = {
-      originalParams: relayerParams,
-      crossChainOrder: crossChainOrder,
-      srcComplement: undefined,
-      dstDeployedAt: undefined,
-    };
-
-    if (relayerParams.secretHashes && relayerParams.secretHashes.length > 2) {
-      console.log("Partial fill detected, storing secret hashes");
-      storedOrderData.isPartialFill = true;
-    }
-
-    this.orders.set(orderHash, storedOrderData);
-    console.log(`Order registered with hash: ${orderHash}`);
     console.log(
-      `Source Chain: ${relayerParams.srcChainId}, Destination Chain: ${crossChainOrder.dstChainId}`
-    );
-
-    // TODO: this will call the executeOrder function, which will deploy the src and dst escrow function.
-    console.log(
-      `[OrderManager] Registering order:`,
-      relayerParams,
-      crossChainOrder.toJSON()
-    );
-    console.log(`[OrderManager] Executing order: ${orderHash}`);
-    await this.executeOrder(
-      orderHash,
+      relayerParams.srcChainId,
       this.isEVMChain(relayerParams.srcChainId)
     );
+    if (this.isEVMChain(relayerParams.srcChainId)) {
+      console.log("Registering order from RelayerRequestParams for EVM -> SUI");
+      // @note order stored for this resolver needs to compute this - hash lock will be the secretHash[resolverId + 1], if this is an array then store variable in stored order that partial fills is true.
+      // Decode the extension from the relayer params
+      const extension = EvmExtension.decode(relayerParams.extension);
+      console.log("Decoded extension:", extension);
+
+      // Convert RelayerRequestParams to EvmCrossChainOrder using SDK method
+      const crossChainOrder = EvmCrossChainOrder.fromDataAndExtension(
+        {
+          ...relayerParams.order,
+          receiver: SuiAddress.fromString(relayerParams.order.receiver)
+            .splitToParts()[1]
+            .toHex(),
+          takerAsset: SuiAddress.fromString(relayerParams.order.takerAsset)
+            .splitToParts()[1]
+            .toHex(),
+        },
+        extension
+      );
+      const orderHash = crossChainOrder.getOrderHash(relayerParams.srcChainId);
+
+      // Store all the data we need for execution
+      const storedOrderData: StoredOrderData = {
+        originalParams: relayerParams,
+        crossChainOrder: crossChainOrder,
+        srcComplement: undefined,
+        dstDeployedAt: undefined,
+      };
+
+      if (relayerParams.secretHashes && relayerParams.secretHashes.length > 2) {
+        console.log("Partial fill detected, storing secret hashes");
+        storedOrderData.isPartialFill = true;
+      }
+
+      this.orders.set(orderHash, storedOrderData);
+      console.log(`Order registered with hash: ${orderHash}`);
+      console.log(
+        `Source Chain: ${relayerParams.srcChainId}, Destination Chain: ${crossChainOrder.dstChainId}`
+      );
+
+      // TODO: this will call the executeOrder function, which will deploy the src and dst escrow function.
+      console.log(
+        `[OrderManager] Registering order:`,
+        relayerParams,
+        crossChainOrder.toJSON()
+      );
+      console.log(`[OrderManager] Executing order: ${orderHash}`);
+      await this.executeOrder(
+        orderHash,
+        this.isEVMChain(relayerParams.srcChainId)
+      );
+    } else {
+      console.log("Registering order from RelayerRequestParams for SUI -> EVM");
+      // @note order stored for this resolver needs to compute this - hash lock will be the secretHash[resolverId + 1], if this is an array then store variable in stored order that partial fills is true.
+      // Decode the extension from the relayer params
+      const extensionBytes = new Uint8Array(
+        Buffer.from(relayerParams.extension.replace("0x", ""), "hex")
+      );
+      const extension = SuiEscrowExtension.decode(extensionBytes);
+      console.log("Decoded extension:", extension);
+
+      // Convert RelayerRequestParams to SuiCrossChainOrder using SDK method
+      // Create a SuiEscrowExtension from the decoded data and relayer params
+      const auctionDetails = AuctionDetails.noAuction(
+        300n,
+        BigInt(Math.floor(Date.now() / 1000))
+      );
+
+      const escrowExtension = new SuiEscrowExtension(
+        SuiAddress.fromString(relayerParams.order.makerAsset),
+        SuiAddress.fromString(relayerParams.order.takerAsset),
+        BigInt(relayerParams.order.makingAmount),
+        BigInt(relayerParams.order.takingAmount),
+        SuiAddress.fromString(relayerParams.order.maker),
+        SuiAddress.fromString(relayerParams.order.receiver),
+        auctionDetails,
+        extension.hashLock,
+        extension.dstChainId,
+        extension.dstToken,
+        extension.srcSafetyDeposit,
+        extension.dstSafetyDeposit,
+        extension.timeLocks,
+        BigInt(relayerParams.order.salt || 0)
+      );
+
+      const crossChainOrder = SuiCrossChainOrder.fromEscrowExtension(
+        escrowExtension,
+        {
+          auction: auctionDetails,
+        }
+      );
+      const orderHash = crossChainOrder.getOrderHash(relayerParams.srcChainId);
+
+      // Store all the data we need for execution
+      const storedOrderData: StoredOrderData = {
+        originalParams: relayerParams,
+        crossChainOrder: crossChainOrder,
+        srcComplement: undefined,
+        dstDeployedAt: undefined,
+      };
+
+      if (relayerParams.secretHashes && relayerParams.secretHashes.length > 2) {
+        console.log("Partial fill detected, storing secret hashes");
+        storedOrderData.isPartialFill = true;
+      }
+
+      this.orders.set(orderHash, storedOrderData);
+      console.log(`Order registered with hash: ${orderHash}`);
+      console.log(
+        `Source Chain: ${relayerParams.srcChainId}, Destination Chain: ${crossChainOrder.dstChainId}`
+      );
+
+      // TODO: this will call the executeOrder function, which will deploy the src and dst escrow function.
+      console.log(
+        `[OrderManager] Registering order:`,
+        relayerParams,
+        crossChainOrder.toJSON()
+      );
+      console.log(`[OrderManager] Executing order: ${orderHash}`);
+      await this.executeOrder(
+        orderHash,
+        this.isEVMChain(relayerParams.srcChainId)
+      );
+    }
   }
 
   /**
@@ -212,6 +310,13 @@ export class OrderManager {
 
       if (fromEVM) {
         console.log(`Using EVM client for source deployment`);
+
+        // Ensure we have an EVM order for EVM operations
+        if (!isEvmCrossChainOrder(crossChainOrder)) {
+          throw new Error(
+            "Expected EvmCrossChainOrder for EVM source deployment"
+          );
+        }
 
         // Get resolver ID from environment (1-indexed)
         const resolverId = this.getResolverId();
@@ -340,6 +445,8 @@ export class OrderManager {
           fillAmount,
           takerTraits
         );
+        storedOrder.srcBlockHash = srcResult.blockHash;
+
         console.log(`EVM source escrow deployed - TxHash: ${srcResult.txHash}`);
 
         // Get source complement from factory event
@@ -349,6 +456,13 @@ export class OrderManager {
         storedOrder.srcComplement = srcComplement;
       } else {
         console.log(`Using Sui client for source deployment`);
+
+        // Ensure we have a Sui order for Sui operations
+        if (!isSuiCrossChainOrder(crossChainOrder)) {
+          throw new Error(
+            "Expected SuiCrossChainOrder for Sui source deployment"
+          );
+        }
 
         // Get resolver ID from environment (1-indexed)
         const resolverId = this.getResolverId();
@@ -456,6 +570,9 @@ export class OrderManager {
           signature,
           fillAmount
         );
+
+        storedOrder.srcBlockHash = srcResult.blockHash;
+
         console.log(`[OrderManager] Sui source escrow deployed successfully`);
         console.log(`[OrderManager]   TxHash: ${srcResult.txHash}`);
         console.log(`[OrderManager]   BlockHash: ${srcResult.blockHash}`);
@@ -646,15 +763,26 @@ export class OrderManager {
   ): any {
     const { crossChainOrder, originalParams } = storedOrder;
     const resolverAddress = fromEVM
-      ? this.evmClient.getAddress()
-      : this.suiClient.getAddress();
+      ? process.env.EVM_RESOLVER_CONTRACT!
+      : process.env.SUI_RESOLVER_CONTRACT!;
 
-    return crossChainOrder.toSrcImmutables(
-      originalParams.srcChainId,
-      EvmAddress.fromString(resolverAddress),
-      crossChainOrder.takingAmount,
-      crossChainOrder.escrowExtension.hashLockInfo
-    );
+    if (isEvmCrossChainOrder(crossChainOrder)) {
+      return crossChainOrder.toSrcImmutables(
+        originalParams.srcChainId,
+        EvmAddress.fromString(resolverAddress),
+        crossChainOrder.makingAmount,
+        crossChainOrder.escrowExtension.hashLockInfo
+      );
+    } else if (isSuiCrossChainOrder(crossChainOrder)) {
+      return crossChainOrder.toSrcImmutables(
+        originalParams.srcChainId,
+        SuiAddress.fromString(resolverAddress),
+        crossChainOrder.makingAmount,
+        crossChainOrder.escrowExtension.hashLockInfo
+      );
+    } else {
+      throw new Error("Unknown cross-chain order type");
+    }
   }
 
   /**
@@ -791,8 +919,6 @@ export class OrderManager {
 
       if (isDstEVM) {
         // For EVM chains, calculate escrow address and call withdrawFromEscrow
-        const evmClient = this.evmClient; // We have single EVM client for now
-
         // Get destination immutables for address calculation
         const dstImmutables = this.getDstImmutables(
           storedOrder,
@@ -812,10 +938,10 @@ export class OrderManager {
         }
 
         console.log(`Withdrawing from EVM escrow at address: ${escrowAddress}`);
-        const result = await evmClient.withdrawFromEscrow(
-          escrowAddress,
+        const result = await this.evmClient.dstWithdrawFromEscrow(
           secret,
-          dstImmutables
+          dstImmutables,
+          storedOrder.dstBlockHash!
         );
         console.log(`EVM withdrawal successful:`, result);
       } else {
@@ -861,6 +987,15 @@ export class OrderManager {
           `[OrderManager] Sui destination withdrawal successful:`,
           result
         );
+
+        console.log("[OrderManager]   Now trying src withdrawal...");
+        const srcResult = await this.evmClient.srcWithdrawFromEscrow(
+          secret,
+          this.getSrcImmutables(storedOrder, true),
+          storedOrder.srcBlockHash!
+        );
+
+        console.log("[OrderManager]   Src withdrawal successful:", srcResult);
       }
     } catch (error) {
       console.error("Error triggering withdrawal:", error);

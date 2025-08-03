@@ -1,16 +1,13 @@
-import { EVMConfig } from "../../config/chain";
-import { ChainClient } from "../interface/chain-interface";
-import { ethers } from "ethers";
 import {
-  TakerTraits,
-  AmountMode,
-  Extension,
-  Address as SdkAddress,
-  EvmCrossChainOrder,
   EvmAddress,
-  Immutables,
+  EvmCrossChainOrder,
   HashLock,
+  Immutables,
+  TakerTraits,
+  EvmEscrowFactory,
 } from "@1inch/cross-chain-sdk";
+import { ethers } from "ethers";
+import { EVMConfig } from "../../config/chain";
 import { EscrowFactory } from "../helper/escrow-factory";
 import * as ResolverJson from "./Resolver.json";
 export const RESOLVER_ABI = ResolverJson.abi;
@@ -18,11 +15,17 @@ export const RESOLVER_ABI = ResolverJson.abi;
 export class EVMClient {
   private config: EVMConfig;
   private signer: any;
-  private provider: any;
+  private provider: ethers.JsonRpcProvider;
   private escrowFactory: EscrowFactory;
 
   // Finality lock timeout for EVM chains (in milliseconds)
   private static readonly FINALITY_LOCK_TIMEOUT = 2000;
+  private static readonly SRC_ESCROW_IMPL_ADDRESS = EvmAddress.fromString(
+    "0xcD70bf33cFE59759851dB21c83ea47b6B83beF6A"
+  );
+  private static readonly DST_ESCROW_IMPL_ADDRESS = EvmAddress.fromString(
+    "0x9c3e06659f1c34F930cE97fCbce6e04ae88e535B"
+  );
 
   constructor(config: EVMConfig) {
     this.config = config;
@@ -33,6 +36,11 @@ export class EVMClient {
       config.escrowFactoryAddress
     );
     console.log("EVMClient initialized with config");
+  }
+
+  async getTimestamp(blockHash: string) {
+    const receipt = await this.provider.getBlock(blockHash);
+    return receipt!.timestamp;
   }
 
   async createSrcEscrow(
@@ -185,19 +193,13 @@ export class EVMClient {
     }
   }
 
-  async withdrawFromEscrow(
-    escrowAddress?: string,
-    secret?: string,
-    immutables?: Immutables<EvmAddress>
-  ): Promise<any> {
+  async dstWithdrawFromEscrow(
+    secret: string,
+    immutables: Immutables<EvmAddress>,
+    blockHash: string
+  ) {
     try {
       console.log("Withdrawing from EVM escrow");
-
-      if (!escrowAddress || !secret || !immutables) {
-        throw new Error(
-          "Escrow address, secret, and immutables required for EVM withdrawal"
-        );
-      }
 
       // Contract ABI matching the exact Resolver.withdraw method
       const contract = new ethers.Contract(
@@ -208,12 +210,71 @@ export class EVMClient {
 
       // Convert hex secret to bytes32 format
       const secretBytes32 = ethers.id(secret).slice(0, 66);
+      const newImmutables = immutables.withDeployedAt(
+        BigInt(await this.getTimestamp(blockHash))
+      );
+
+      const escrowAddress = new EvmEscrowFactory(
+        EvmAddress.fromString(this.getEscrowFactoryAddress())
+      ).getSrcEscrowAddress(immutables, EVMClient.DST_ESCROW_IMPL_ADDRESS);
 
       // Call contract with proper parameter order (escrow, secret, immutables)
       const tx = await contract.withdraw(
         escrowAddress, // address escrow
         secretBytes32, // bytes32 secret
-        immutables.build() // IBaseEscrow.Immutables
+        newImmutables.build() // IBaseEscrow.Immutables
+      );
+
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
+
+      console.log(`Withdrawal successful - TxHash: ${receipt.hash}`);
+      return {
+        txHash: receipt.hash as string,
+        blockHash: receipt.blockHash as string,
+      };
+    } catch (error) {
+      console.error("Error withdrawing from escrow:", error);
+      throw error;
+    }
+  }
+
+  async srcWithdrawFromEscrow(
+    secret: string,
+    immutables: Immutables<EvmAddress>,
+    blockHash: string
+  ): Promise<any> {
+    try {
+      console.log("Withdrawing from EVM escrow");
+
+      // Contract ABI matching the exact Resolver.withdraw method
+      const contract = new ethers.Contract(
+        this.config.resolverContractAddress,
+        RESOLVER_ABI,
+        this.signer
+      );
+
+      const timestamp = BigInt(await this.getTimestamp(blockHash));
+
+      // Convert hex secret to bytes32 format
+      const secretBytes32 = ethers.zeroPadValue(secret, 32);
+
+      const newImmutables = immutables.withDeployedAt(timestamp);
+      const build = newImmutables.build();
+
+      console.log("src immutables at", timestamp, "are", build);
+
+      const escrowAddress = new EvmEscrowFactory(
+        EvmAddress.fromString(this.getEscrowFactoryAddress())
+      ).getSrcEscrowAddress(newImmutables, EVMClient.SRC_ESCROW_IMPL_ADDRESS);
+
+      console.log("src escrow address is", escrowAddress.toHex());
+
+      // Call contract with proper parameter order (escrow, secret, immutables)
+      const tx = await contract.withdraw(
+        escrowAddress.toHex(), // address escrow
+        secretBytes32, // bytes32 secret
+        newImmutables.build() // IBaseEscrow.Immutables
       );
 
       // Wait for transaction confirmation
