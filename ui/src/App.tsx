@@ -16,8 +16,10 @@ import {
   sepolia,
 } from 'wagmi/chains';
 import { defineChain } from 'viem';
+import { useState, useEffect } from 'react';
 import Header from './components/Header';
 import SwapInterface from './components/SwapInterface';
+import StarBurst from './components/StarBurst';
 
 // Config options for the networks you want to connect to
 const { networkConfig } = createNetworkConfig({
@@ -65,10 +67,29 @@ const queryClient = new QueryClient({
 });
 
 function YourApp() {
+  const [showAnimation, setShowAnimation] = useState(true);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    // Trigger animation on component mount (page load/reload)
+    setShowAnimation(true);
+  }, []);
+
+  const handleAnimationComplete = () => {
+    setShowAnimation(false);
+    setIsLoaded(true);
+  };
+
   return (
     <div className="h-screen bg-gradient-to-br from-[#0B1426] via-[#1a2332] to-[#0B1426] flex flex-col overflow-hidden">
+      {/* Star Burst Animation - shows on every reload */}
+      {showAnimation && <StarBurst onAnimationComplete={handleAnimationComplete} />}
+      
+      {/* Main App Content */}
       <Header />
-      <main className="flex-1 flex items-center justify-center px-6 py-4 overflow-y-auto">
+      <main className={`flex-1 flex items-center justify-center px-6 py-4 overflow-y-auto transition-opacity duration-500 ${
+        isLoaded ? 'opacity-100' : 'opacity-50'
+      }`}>
         <SwapInterface />
       </main>
     </div>

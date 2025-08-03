@@ -28,5 +28,191 @@
 /* Override any conflicting dapp-kit styles */
 .dui-connect-button {
   background-color: #2563eb !important;
-  color: white !important;
+}
+
+/* Star Burst Animation Keyframes */
+@keyframes star-burst {
+  0% {
+    transform: scale(0) rotate(0deg);
+    opacity: 0;
+  }
+  15% {
+    transform: scale(0.4) rotate(45deg);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.5) rotate(180deg);
+    opacity: 1;
+  }
+  70% {
+    transform: scale(1.2) rotate(270deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(360deg);
+    opacity: 0.8;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.7)) drop-shadow(0 0 20px rgba(255, 165, 0, 0.5));
+  }
+  50% {
+    filter: drop-shadow(0 0 20px rgba(255, 215, 0, 1)) drop-shadow(0 0 40px rgba(255, 165, 0, 0.8));
+  }
+}
+
+@keyframes ring-expansion {
+  0% {
+    transform: scale(0);
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(10);
+    opacity: 0;
+  }
+}
+
+@keyframes ring-expansion-delayed {
+  0% {
+    transform: scale(0);
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(15);
+    opacity: 0;
+  }
+}
+
+@keyframes particle-burst {
+  0% {
+    transform: translate(-50%, -50%) translateY(0px) scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) translateY(calc(var(--distance) * -1px)) scale(var(--scale));
+    opacity: 0;
+  }
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    transform: scale(0) rotate(0deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1) rotate(180deg);
+    opacity: 1;
+  }
+}
+
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes shockwave {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(60);
+    opacity: 0;
+  }
+}
+
+@keyframes shockwave-delayed {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(70);
+    opacity: 0;
+  }
+}
+
+@keyframes shockwave-delayed-2 {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(80);
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in-out {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.3;
+  }
+  80% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Animation Classes */
+.animate-star-burst {
+  animation: star-burst 2.5s ease-out forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-ring-expansion {
+  animation: ring-expansion 2s ease-out forwards;
+}
+
+.animate-ring-expansion-delayed {
+  animation: ring-expansion-delayed 2.3s ease-out 0.3s forwards;
+}
+
+.animate-particle-burst {
+  animation: particle-burst 2s ease-out forwards;
+}
+
+.animate-sparkle {
+  animation: sparkle 1.5s ease-in-out forwards;
+}
+
+.animate-twinkle {
+  animation: twinkle 1.3s ease-in-out infinite;
+}
+
+.animate-shockwave {
+  animation: shockwave 1.7s ease-out forwards;
+}
+
+.animate-shockwave-delayed {
+  animation: shockwave-delayed 1.9s ease-out 0.2s forwards;
+}
+
+.animate-shockwave-delayed-2 {
+  animation: shockwave-delayed-2 2.1s ease-out 0.4s forwards;
+}
+
+.animate-fade-in-out {
+  animation: fade-in-out 3s ease-in-out forwards;
 }
